@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Oficina de Agentes</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/* tamaños en rem ligados al ancho de la ventana: se leen igual aunque el navegador tenga el zoom reducido */
+html{font-size:max(13px,.74vw)}
+html,body{margin:0;height:100%;background:#07080d;color:#d9deea;font-family:Consolas,"DejaVu Sans Mono",monospace;overflow:hidden}
+#escena{position:fixed;inset:0;display:block;width:100%;height:100%;cursor:grab}
+.hud{position:fixed;left:1.2rem;right:1.2rem;top:.9rem;display:flex;gap:.9rem;align-items:center;pointer-events:none;flex-wrap:wrap}
+.logo{font-weight:800;font-size:1.4rem;letter-spacing:.15rem;color:#fff;text-shadow:0 2px 8px #000}
+.chip{border:1px solid #ff3fa4;color:#ff3fa4;border-radius:4px;padding:.15rem .6rem;font-size:.85rem;background:rgba(7,8,13,.6)}
+.chip.ok{border-color:#1f5a3a;color:#3ddc84}.chip.mal{border-color:#ff4d5e;color:#ff4d5e;background:#220c10}
+.reloj{margin-left:auto;font-size:1.4rem;color:#3ddc84;border:1px solid #1f5a3a;padding:.15rem .8rem;border-radius:4px;background:rgba(7,8,13,.6)}
+.enlace{pointer-events:auto;color:#8db43c;font-size:.85rem;text-decoration:none}
+.panel{position:fixed;bottom:1.2rem;background:rgba(8,10,16,.86);border:1px solid #2b3146;border-radius:10px;padding:.8rem .95rem;backdrop-filter:blur(6px);box-shadow:0 10px 30px rgba(0,0,0,.4);font-size:1rem}
+.panel h2{margin:0 0 .6rem;font-size:.95rem;letter-spacing:.15rem;color:#fff}.panel h2 span{color:#7d8499;font-size:.8rem;margin-left:.5rem;letter-spacing:.05rem}
+#mesas{left:1.2rem;width:38rem;max-width:calc(100vw - 2.4rem)}#juez{right:1.2rem;width:28rem;border-color:#5a5222}
+table{width:100%;border-collapse:collapse;font-size:.9rem}th{color:#7d8499;font-weight:400;text-align:right;padding:.15rem .3rem}th:first-child,td:first-child{text-align:left}
+td{padding:.3rem;text-align:right;border-top:1px dashed #1a1e2b}.neg{color:#ff4d5e}.pos{color:#3ddc84}
+.tag{font-size:.75rem;padding:.08rem .4rem;border-radius:3px;border:1px solid #3a4052;color:#8a90a3;white-space:nowrap}.tag.ref{color:#fff;border-color:#888}
+.tag.enc{color:#3ddc84;border-color:#1f5a3a}.tag.deb{color:#ff4d5e;border-color:#5a1f28}
+.btns{display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem}.btn{border:2px solid #2b3146;border-radius:6px;text-align:center;padding:.55rem .15rem;font-weight:800;color:#4a5066;letter-spacing:.08rem;font-size:.95rem}
+.btn.on.descartar{border-color:#ff4d5e;color:#ff4d5e;background:#220c10;box-shadow:0 0 14px rgba(255,77,94,.35)}
+.btn.on.vigilar{border-color:#3ddc84;color:#3ddc84;background:#0b2016;box-shadow:0 0 14px rgba(61,220,132,.3)}
+.btn.on.sin_dato{border-color:#8a90a3;color:#d9deea;background:#151925}
+.flags{display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem;margin-top:.55rem}.f{font-size:.78rem;padding:.15rem .4rem;border-radius:3px;border:1px solid #2b3146;color:#5d6378}
+.f.si{border-color:#ff4d5e;color:#ff4d5e}.f.no{border-color:#1f5a3a;color:#3ddc84}
+.tok{color:#fff;font-size:1.1rem;margin:0 0 .45rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tok small{color:#7d8499;font-size:.8rem}
+.nota{color:#7d8499;font-size:.78rem;margin-top:.45rem}
+#aviso{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#7d8499;pointer-events:none}
+@media (max-width:900px){#juez{bottom:auto;top:4rem}}
+</style></head><body>
+<canvas id="escena"></canvas>
+<div class="hud"><div class="logo">OFICINA DE AGENTES</div><span class="chip">OBSERVATORIO · SIN DINERO REAL</span>
+<span class="chip" id="conexion">conectando…</span><a class="enlace" href="/sala">ver la sala</a><span class="reloj" id="reloj">--:--:--</span></div>
+<div id="aviso">cargando robots…</div>
+<div class="panel" id="mesas"><h2>MARCADOR · MESAS EN PAPEL<span>desde 18:39</span></h2><div id="mesasCont"></div>
+<div class="nota">Solo para mirar: no decide nada. Hasta 220 operaciones y sin separarse de la base, es ruido.</div></div>
+<div class="panel" id="juez"><h2 style="color:#e8d44d">EL JUEZ DECIDE<span id="juezHace"></span></h2>
+<div class="tok" id="juezTok">esperando el primer juicio…</div>
+<div class="btns"><div class="btn vigilar" id="bt_vigilar">VIGILAR</div><div class="btn descartar" id="bt_descartar">DESCARTAR</div><div class="btn sin_dato" id="bt_sin_dato">SIN DATO</div></div>
+<div class="flags" id="flags"></div><div class="nota" id="juezHora"></div></div>
+
+<script type="importmap">{"imports":{"three":"/estatico/three.module.min.js","three/addons/":"/estatico/jsm/"}}</script>
+<script type="module">
+// Solo lectura: pide /datos_sala cada REFRESCO_MS y /datos_token solo cuando cambia el último juicio.
+// Los textos de los tokens son datos NO fiables: se pintan solo con textContent o con fillText en canvas, nunca como HTML.
+// Las acciones de los robots solo se disparan cuando cambia un dato real de su agente (si no, descansan).
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const REFRESCO_MS = __REFRESCO_MS__;
+const FUENTE = "Consolas, 'DejaVu Sans Mono', monospace";
+const $ = id => document.getElementById(id);
+const nf = (v, d = 0) => v === null || v === undefined ? "—" : Number(v).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
+const ahoraS = () => performance.now() / 1000;
+
+// ---------------- escena ----------------
+const cv = $("escena");
+const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+r.setPixelRatio(Math.min(devicePixelRatio, 2));
+r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.45;
+r.outputColorSpace = THREE.SRGBColorSpace;
+const esc = new THREE.Scene();
+esc.background = new THREE.Color("#07080d");
+esc.fog = new THREE.Fog("#07080d", 55, 90);
+
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+const OBJETIVO = new THREE.Vector3(-0.5, 0.9, -2.2);
+cam.position.set(22, 20.3, 24); cam.lookAt(OBJETIVO);
+function ajustar() {
+  const w = innerWidth, h = innerHeight, z = 9.8; r.setSize(w, h);
+  cam.left = -z * w / h; cam.right = z * w / h; cam.top = z; cam.bottom = -z; cam.updateProjectionMatrix();
+}
+addEventListener("resize", ajustar); ajustar();
+
+// giro de cámara limitado (sin desplazar; zoom con la rueda dentro de un margen)
+const ctl = new OrbitControls(cam, cv);
+ctl.target.copy(OBJETIVO); ctl.enablePan = false; ctl.enableDamping = true; ctl.dampingFactor = 0.08;
+ctl.minZoom = 0.8; ctl.maxZoom = 2.6;
+const AZ0 = Math.atan2(cam.position.x - OBJETIVO.x, cam.position.z - OBJETIVO.z);
+ctl.minAzimuthAngle = AZ0 - 0.6; ctl.maxAzimuthAngle = AZ0 + 0.6;
+ctl.minPolarAngle = 0.6; ctl.maxPolarAngle = 1.25;
+ctl.update();
+
+esc.add(new THREE.HemisphereLight("#b9c8ff", "#2a1830", 1.1));
+const sol = new THREE.DirectionalLight("#ffe7cc", 2.4);
+sol.position.set(10, 18, 6); sol.castShadow = true; sol.shadow.mapSize.set(2048, 2048);
+Object.assign(sol.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16 }); sol.shadow.bias = -0.0005;
+esc.add(sol);
+
+const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, metalness: 0.05, ...o });
+const brillante = (c, opac = 1) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: opac, blending: THREE.AdditiveBlending, depthWrite: false });
+function caja(w, h, d, m, x, y, z, rad = 0.06) {
+  const g = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, rad), m);
+  g.position.set(x, y, z); g.castShadow = g.receiveShadow = true; esc.add(g); return g;
+}
+const suelo = new THREE.Mesh(new THREE.PlaneGeometry(26, 18), mat("#1d2234", { roughness: 0.85 }));
+suelo.rotation.x = -Math.PI / 2; suelo.receiveShadow = true; esc.add(suelo);
+const rejilla = new THREE.GridHelper(26, 26, "#2a3148", "#242a3e"); rejilla.position.y = 0.01; esc.add(rejilla);
+caja(26, 4.2, 0.4, mat("#1b2032"), 0, 2.1, -9.2, 0.02);
+caja(0.4, 4.2, 18, mat("#171b2b"), -13.2, 2.1, 0, 0.02);
+for (let k = 0; k < 4; k++) caja(0.1, 1.6, 2.6, mat("#0d1830", { emissive: "#1f4c9a", emissiveIntensity: 0.6 }), -12.95, 2.4, -6 + k * 4, 0.02);
+
+// texto en canvas: reduce la letra y, si aun así no cabe, recorta con "…"
+function encajar(g, t, maxW, px, negrita) {
+  t = String(t ?? "");
+  let s = px;
+  for (; s > px * 0.55; s -= 1) { g.font = `${negrita ? "bold " : ""}${s}px ${FUENTE}`; if (g.measureText(t).width <= maxW) return t; }
+  while (t.length > 1 && g.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+  return t + "…";
+}
+// pantalla que solo se repinta si cambia el contenido
+function pantalla(w, h) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  let clave = "";
+  return { tex, g, c, pintar(dibujo, k) { if (k === clave) return; clave = k; dibujo(g, w, h); tex.needsUpdate = true; } };
+}
+function pintarMonitor(p, titulo, valor, pie, col, fondo) {
+  p.monitor.pintar((g, w, h) => {
+    g.fillStyle = fondo; g.fillRect(0, 0, w, h); g.textAlign = "center";
+    g.fillStyle = col; g.fillText(encajar(g, titulo, w - 30, h * 0.15, true), w / 2, h * 0.24);
+    g.fillStyle = "#ffffff"; g.fillText(encajar(g, valor, w - 30, h * 0.22, true), w / 2, h * 0.58);
+    g.fillStyle = "#8a90a3"; g.fillText(encajar(g, pie, w - 30, h * 0.11, false), w / 2, h * 0.85);
+  }, [titulo, valor, pie, col, fondo].join("|"));
+}
+function sprite(p, w, h) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: p.tex, transparent: true, depthWrite: false }));
+  sp.scale.set(w, h, 1); esc.add(sp); return sp;
+}
+
+// pantalla grande de la pared: mesas
+const muro = pantalla(1024, 360);
+(function () {
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(9, 3.2), new THREE.MeshBasicMaterial({ map: muro.tex }));
+  p.position.set(0, 2.6, -8.95); esc.add(p);
+  caja(9.4, 3.6, 0.15, mat("#0a0c14"), 0, 2.6, -9.05, 0.05);
+  const l = new THREE.PointLight("#4da3ff", 6, 9, 2); l.position.set(0, 2.6, -7.5); esc.add(l);
+})();
+const NOM_MESA = { BASE: "BASE", JUEZ_VIGILAR: "JUEZ · VIGILAR", CERCA_GRADUAR: "CERCA GRADUAR", SUPERV_T1: "SUPERV. T1" };
+function pintarMuro(ms) {
+  muro.pintar((g, w, h) => {
+    g.fillStyle = "#04060c"; g.fillRect(0, 0, w, h); g.textAlign = "left";
+    g.fillStyle = "#4da3ff"; g.font = `bold 38px ${FUENTE}`; g.fillText("MESAS EN PAPEL · operaciones hacia 220", 36, 60);
+    if (!ms.length) { g.fillStyle = "#7d8499"; g.font = `28px ${FUENTE}`; g.fillText("sin datos del contable", 36, 160); return; }
+    ms.forEach((m, i) => {
+      const y = 112 + i * 62, p = Math.min(1, m.n / 220);
+      const col = m.etiqueta === "POR ENCIMA" ? "#3ddc84" : m.etiqueta === "POR DEBAJO" ? "#ff4d5e" : m.mesa === "BASE" ? "#bbbbbb" : "#5d6aa0";
+      g.fillStyle = "#9aa1b5"; g.font = `26px ${FUENTE}`; g.fillText(NOM_MESA[m.mesa] || m.mesa, 36, y + 20);
+      g.fillStyle = "#1a1f2e"; g.fillRect(330, y, 470, 26); g.fillStyle = col; g.fillRect(330, y, 470 * p, 26);
+      g.fillStyle = "#ffffff"; g.font = `bold 24px ${FUENTE}`;
+      g.fillText(m.media === null ? `${m.n}` : `${m.n} · ${m.media >= 0 ? "+" : ""}${nf(m.media * 100, 1)} %`, 815, y + 21);
+    });
+  }, JSON.stringify(ms.map(m => [m.mesa, m.n, m.media, m.etiqueta])));
+}
+
+// ---------------- puestos ----------------
+// ag = fila de agentes_estado que manda en su estado (riesgo corre dentro del rastreador; el vigilante no tiene fila)
+const PUESTOS = [
+  { id: "rastreador", ag: "rastreador", nom: "01 RASTREADOR", col: "#4da3ff", hace: "fotografía las curvas" },
+  { id: "riesgo", ag: "rastreador", nom: "02 RIESGO", col: "#ff5d73", hace: "sella pasa / descarte" },
+  { id: "analista", ag: "analista", nom: "03 ANALISTA v1", col: "#ff8a3d", hace: "pregunta a Qwen" },
+  { id: "analista_v2", ag: "analista_v2", nom: "03 ANALISTA v2", col: "#a97bff", hace: "pregunta a Qwen" },
+  { id: "tenedores", ag: "tenedores", nom: "04 TENEDORES", col: "#2ad4c9", hace: "consulta Helius" },
+  { id: "juez", ag: "juez", nom: "05 JUEZ", col: "#e8d44d", juez: true },
+  { id: "contable", ag: "contable", nom: "06 CONTABLE", col: "#5ec2ff", hace: "apunta operaciones" },
+  { id: "archivista", ag: "archivista", nom: "ARCHIVISTA", col: "#e8c547", hace: "archiva resúmenes" },
+  { id: "supervivientes", ag: "supervivientes", nom: "SUPERVIVIENTES", col: "#7bd88f", hace: "toma el pulso" },
+  { id: "escaparate", ag: "escaparate", nom: "ESCAPARATE", col: "#ffa94d", hace: "barre DexScreener" },
+  { id: "vigilante", ag: null, nom: "VIGILANTE", col: "#f2f2f2", patrulla: true },
+];
+PUESTOS.forEach((p, i) => { if (i < 7) { p.x = -10.2 + i * 3.25; p.z = -5.2; } else { p.x = -8 + (i - 7) * 3.6; p.z = 1.6; } });
+const P = Object.fromEntries(PUESTOS.map(p => [p.id, p]));
+const SERVIDOR = new THREE.Vector3(7.4, 2.2, 1.4), ESTANTE = new THREE.Vector3(-12.4, 1.6, 4.5);
+
+// cartel flotante: nombre arriba y el dato principal debajo (los monitores son pequeños para leer)
+function cartel(p, fondo, col, valor) {
+  p.cartel.pintar((g, w, h) => {
+    g.fillStyle = fondo; g.fillRect(0, 0, w, h); g.textAlign = "center"; g.fillStyle = col;
+    g.fillText(encajar(g, p.nom, w - 20, h * 0.3, true), w / 2, h * 0.38);
+    g.fillStyle = "#ffffff"; g.fillText(encajar(g, valor, w - 20, h * 0.3, true), w / 2, h * 0.82);
+  }, [fondo, col, valor].join("|"));
+}
+for (const p of PUESTOS) {
+  const { x, z } = p, mPata = mat("#1c2030");
+  caja(2.2, 0.12, 1.2, mat("#2c3247"), x, 0.82, z);
+  for (const [dx, dz] of [[-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5]]) caja(0.08, 0.8, 0.08, mPata, x + dx, 0.4, z + dz, 0.02);
+  caja(1.5, 0.95, 0.08, mat("#11131c"), x, 1.55, z - 0.35, 0.04);
+  caja(0.12, 0.5, 0.12, mPata, x, 1.1, z - 0.4, 0.03);
+  p.monitor = pantalla(512, 300);
+  pintarMonitor(p, p.nom.replace(/^\d+ /, ""), "…", "", p.col, "#05070d");
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.8), new THREE.MeshBasicMaterial({ map: p.monitor.tex }));
+  scr.position.set(x, 1.55, z - 0.3); esc.add(scr);
+  p.brillo = new THREE.PointLight(p.col, p.juez ? 5 : 2.2, 3.5, 2); p.brillo.position.set(x, 1.6, z + 0.3); esc.add(p.brillo);
+  caja(0.9, 0.04, 0.3, mat("#1a1e2b"), x, 0.9, z + 0.15, 0.02);
+  caja(0.7, 0.08, 0.6, mat("#202535"), x, 0.38, z + 1.05, 0.03); caja(0.7, 0.7, 0.08, mat("#202535"), x, 0.75, z + 1.38, 0.03);
+  p.cartel = pantalla(512, 180);
+  cartel(p, p.juez ? "#2a2608" : "#0b0d15", p.juez ? "#e8d44d" : "#ffffff", "…");
+  sprite(p.cartel, 2.9, 1.02).position.set(x, 2.9, z - 0.3);
+  if (p.juez) {
+    p.foco = new THREE.SpotLight("#8a90a3", 40, 9, 0.45, 0.6, 1.5); p.foco.position.set(x, 6, z + 0.5); p.foco.target.position.set(x, 0, z + 0.5);
+    esc.add(p.foco, p.foco.target);
+  }
+}
+// servidor GPU (Qwen) y estantería del archivo, plantas
+caja(1.2, 2.6, 1.2, mat("#1e2232", { metalness: 0.3 }), 7.4, 1.3, 1.4);
+const ledsQwen = [];
+for (let k = 0; k < 7; k++) ledsQwen.push(caja(0.9, 0.06, 0.02, mat("#0f2", { emissive: "#3ddc84", emissiveIntensity: 1.2 }), 7.4, 0.5 + k * 0.3, 2.01, 0.01));
+const cartelQwen = pantalla(512, 110);
+cartelQwen.pintar((g, w, h) => { g.fillStyle = "#0b0d15"; g.fillRect(0, 0, w, h); g.textAlign = "center"; g.fillStyle = "#3ddc84";
+  g.fillText(encajar(g, "QWEN · GPU local", w - 20, h * 0.5, true), w / 2, h * 0.66); }, "q");
+sprite(cartelQwen, 2.2, 0.47).position.set(7.4, 3.1, 1.4);
+caja(0.5, 3, 2.4, mat("#3a3420"), -12.6, 1.5, 4.5, 0.03);
+for (let k = 0; k < 4; k++) caja(0.45, 0.35, 2.2, mat("#e8c547", { roughness: 0.6 }), -12.6, 0.5 + k * 0.7, 4.5, 0.03);
+for (const [x, z] of [[11.5, -7.8], [-12, -7.8], [11.5, 4.5]]) {
+  caja(0.6, 0.6, 0.6, mat("#3a2a20"), x, 0.3, z, 0.08);
+  const h = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 1), mat("#2f8f55", { flatShading: true })); h.position.set(x, 1.05, z); h.castShadow = true; esc.add(h);
+}
+
+// ---------------- utensilios de cada puesto (lo que "hace" cada agente) ----------------
+const U = {};
+{ // rastreador: cámara de fotos con flash
+  const p = P.rastreador, g = new THREE.Group(); g.position.set(p.x + 0.75, 0.98, p.z + 0.1);
+  const cuerpo = new THREE.Mesh(new RoundedBoxGeometry(0.42, 0.26, 0.2, 2, 0.04), mat("#2a2f40")); cuerpo.castShadow = true;
+  const lente = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.14, 16), mat("#0b0d14", { metalness: 0.6, roughness: 0.3 }));
+  lente.rotation.x = Math.PI / 2; lente.position.z = 0.15;
+  g.add(cuerpo, lente); g.rotation.y = 0.5; esc.add(g);
+  const flash = new THREE.PointLight("#cfe6ff", 0, 6, 2); flash.position.set(p.x + 0.8, 1.4, p.z + 0.4); esc.add(flash);
+  U.rastreador = { cam: g, flash, prox: 0 };
+}
+{ // tenedores: antena parabólica que gira y lanza ondas
+  const p = P.tenedores, g = new THREE.Group(); g.position.set(p.x + 0.8, 0.9, p.z + 0.05);
+  const pie = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.4, 8), mat("#3a4052")); pie.position.y = 0.2;
+  const plato = new THREE.Mesh(new THREE.SphereGeometry(0.28, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.6), mat("#c9d2e3", { side: THREE.DoubleSide, metalness: 0.4 }));
+  plato.position.y = 0.45; plato.rotation.x = -1.0;
+  g.add(pie, plato); esc.add(g); U.tenedores = { g };
+}
+{ // escaparate: faro que barre (DexScreener)
+  const p = P.escaparate, base = new THREE.Vector3(p.x + 0.8, 0.9, p.z + 0.05);
+  caja(0.18, 0.5, 0.18, mat("#3a3020"), base.x, base.y + 0.25, base.z, 0.03);
+  const haz = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.6, 20, 1, true), brillante("#ffa94d", 0.0));
+  haz.geometry.translate(0, -1.3, 0); haz.rotation.z = Math.PI / 2;
+  const piv = new THREE.Group(); piv.position.set(base.x, base.y + 0.55, base.z); piv.add(haz); esc.add(piv);
+  U.escaparate = { piv, haz };
+}
+{ // supervivientes: corazón que late
+  const p = P.supervivientes;
+  const c = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), mat("#7bd88f", { emissive: "#2f9a4f", emissiveIntensity: 0.6, flatShading: true }));
+  c.position.set(p.x + 0.8, 1.08, p.z + 0.05); c.castShadow = true; esc.add(c); U.supervivientes = { c, latido: 0 };
+}
+{ // contable: pila de monedas
+  const p = P.contable, g = new THREE.Group(); g.position.set(p.x + 0.8, 0.9, p.z + 0.1); esc.add(g);
+  U.contable = { g, n: 0 };
+}
+{ // riesgo: sello
+  const p = P.riesgo, g = new THREE.Group(); g.position.set(p.x + 0.7, 0.9, p.z + 0.15);
+  const mango = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 10), mat("#5a3a2a")); mango.position.y = 0.26;
+  const bola = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat("#5a3a2a")); bola.position.y = 0.4;
+  const tampon = new THREE.Mesh(new RoundedBoxGeometry(0.22, 0.1, 0.16, 2, 0.02), mat("#ff5d73")); tampon.position.y = 0.1;
+  g.add(mango, bola, tampon); esc.add(g); U.riesgo = { g, golpe: -1 };
+}
+// vigilante: linterna
+const linterna = new THREE.Mesh(new THREE.ConeGeometry(0.7, 3.2, 20, 1, true), brillante("#fff6c8", 0.07));
+linterna.geometry.translate(0, -1.6, 0); esc.add(linterna);
+
+// partículas que viajan por un arco (papeles, preguntas a Qwen, carpetas, ondas...)
+const viajes = [];
+function enviar(desde, hasta, color, { alto = 1.5, dur = 1.2, forma = "bola", tam = 0.12 } = {}) {
+  const geo = forma === "papel" ? new THREE.BoxGeometry(tam * 2, tam * 0.15, tam * 1.5) : forma === "carpeta" ? new THREE.BoxGeometry(tam * 2.2, tam * 1.6, tam * 0.5)
+    : new THREE.SphereGeometry(tam, 12, 8);
+  const m = new THREE.Mesh(geo, forma === "bola" ? brillante(color, 0.95) : mat(color, { emissive: color, emissiveIntensity: 0.5 }));
+  m.position.copy(desde); esc.add(m);
+  viajes.push({ m, a: desde.clone(), b: hasta.clone(), alto, dur, t0: ahoraS() });
+}
+const ondas = [];
+function onda(pos, color, { radio = 1.6, dur = 1.4, vertical = false } = {}) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), brillante(color, 0.8));
+  m.material.side = THREE.DoubleSide; m.position.copy(pos); if (!vertical) m.rotation.x = -Math.PI / 2;
+  m.scale.setScalar(0.05); esc.add(m); ondas.push({ m, radio, dur, t0: ahoraS() });
+}
+function moneda() {
+  const u = U.contable; if (u.n >= 12) { u.g.clear(); u.n = 0; }
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.035, 16), mat("#e8c547", { metalness: 0.7, roughness: 0.3, emissive: "#6b5300", emissiveIntensity: 0.4 }));
+  m.position.set((u.n % 3) * 0.2 - 0.2, 1.2, 0); m.userData.y = 0.02 + Math.floor(u.n / 3) * 0.04; m.castShadow = true;
+  u.g.add(m); u.n++;
+}
+// cola de acciones repartidas en el tiempo (los datos llegan cada 5 s; así no salen todas de golpe)
+const cola = [];
+function programar(retraso, fn) { cola.push({ t: ahoraS() + retraso, fn }); }
+
+// ---------------- token (cubo dorado) ----------------
+const ZTOK = -3.3;
+const token = caja(0.38, 0.38, 0.38, mat("#e8d44d", { emissive: "#e8b000", emissiveIntensity: 1.4 }), -10.2, 0.5, ZTOK, 0.06);
+const luzTok = new THREE.PointLight("#ffd34d", 6, 4, 2); esc.add(luzTok);
+const etqTok = pantalla(512, 96);
+const spTok = sprite(etqTok, 2.6, 0.49);
+const pts = []; for (let i = 0; i < 7; i++) pts.push(new THREE.Vector3(-10.2 + i * 3.25, 0.03, ZTOK));
+const linea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: "#3a4157", dashSize: 0.25, gapSize: 0.2 }));
+linea.computeLineDistances(); esc.add(linea);
+token.visible = luzTok.visible = spTok.visible = false;
+// sigue a un token que pasa: avanza de puesto según quién lo ha mirado ya (nunca retrocede)
+const TOK = { mint: null, nombre: "", etapa: 1, desde: 0, fin: 0, x: -10.2 };
+const ETAPA_MAX_S = 300, ETAPA_FIN_S = 12;
+function actualizarToken(d) {
+  const ahora = d.ahora, ult = d.ultimo_juicio;
+  const terminado = TOK.mint && ((TOK.fin && ahora - TOK.fin > ETAPA_FIN_S) || ahora - TOK.desde > ETAPA_MAX_S);
+  if (!TOK.mint || terminado) {
+    const nuevo = d.decisiones.find(x => x.pasa === 1 && x.mint !== TOK.mint);
+    if (nuevo) Object.assign(TOK, { mint: nuevo.mint, nombre: nuevo.nombre, etapa: 1, desde: ahora, fin: 0, x: -10.2 });
+  }
+  if (!TOK.mint) return;
+  const m = TOK.mint, en = lista => (lista || []).some(x => x.mint === m);
+  let e = 1;
+  if (en(d.analisis_v1)) e = 2;
+  if (en(d.analisis_v2)) e = 3;
+  if (en(d.tenedores)) e = 4;
+  if (ult && ult.mint === m) e = 5;
+  if (e > TOK.etapa) TOK.etapa = e;
+  if (TOK.etapa === 5 && !TOK.fin) TOK.fin = ahora;
+  etqTok.pintar((g, w, h) => {
+    g.clearRect(0, 0, w, h); g.fillStyle = "rgba(20,18,4,.85)"; g.fillRect(0, 0, w, h);
+    g.textAlign = "center"; g.fillStyle = "#ffd34d"; g.fillText(encajar(g, TOK.nombre, w - 24, h * 0.48, true), w / 2, h * 0.64);
+  }, TOK.mint + TOK.nombre);
+  token.visible = luzTok.visible = spTok.visible = true;
+}
+
+// ---------------- holograma: araña del último juicio ----------------
+// Nodos de /datos_token (solo dibujo). Lo que manda en los colores son las banderas DEL JUEZ (b4 araña, b6 creador repite),
+// porque el "visto en otros" de la sala usa otra definición (sin saldo mínimo y con tokens posteriores).
+const holo = new THREE.Group(), HOLO = new THREE.Vector3(P.juez.x + 0.2, 4.75, P.juez.z - 0.9);
+holo.position.copy(HOLO); esc.add(holo);
+{
+  const haz = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.25, 3.6, 24, 1, true), brillante("#e8d44d", 0.05));
+  haz.position.set(HOLO.x, HOLO.y - 1.9, HOLO.z); esc.add(haz);
+  const disco = new THREE.Mesh(new THREE.RingGeometry(1.75, 1.85, 48), brillante("#e8d44d", 0.35));
+  disco.rotation.x = -Math.PI / 2; disco.position.set(HOLO.x, HOLO.y - 0.35, HOLO.z); esc.add(disco);
+}
+const holoTxt = pantalla(640, 150), spHolo = sprite(holoTxt, 3.6, 0.84);
+spHolo.position.set(HOLO.x, HOLO.y + 1.3, HOLO.z);
+holoTxt.pintar((g, w, h) => { g.clearRect(0, 0, w, h); }, "vacío");
+let holoMint = null, holoPidiendo = false;
+const nodoMat = c => brillante(c, 0.95);
+function construirHolo(u, ar) {
+  holo.clear();
+  const nodo = (pos, c, r = 0.12) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), nodoMat(c)); m.position.copy(pos); holo.add(m); return m; };
+  const hilo = (a, b, c, op = 0.6) => holo.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: op })));
+  const T = new THREE.Vector3(0, 0, 0);
+  const b4 = u.b4 === 1, b6 = u.b6 === 1;
+  nodo(T, "#ffd34d", 0.2);
+  if (b4) { const anillo = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.025, 8, 32), nodoMat("#ff4d5e")); holo.add(anillo); }
+  // creador y sus tokens anteriores (B6)
+  const C = new THREE.Vector3(-1.1, 0.35, 0.2), cc = b6 ? "#ff4d5e" : "#8a90a3";
+  nodo(C, cc, 0.15); hilo(T, C, cc, 0.9);
+  const nPrev = Math.min(ar ? ar.previos : 0, 7);
+  for (let k = 0; k < nPrev; k++) {
+    const a = Math.PI * 0.5 + (k / Math.max(1, nPrev - 1) - 0.5) * 2.2;
+    const q = C.clone().add(new THREE.Vector3(Math.cos(a) * -0.6, Math.sin(a) * 0.55, Math.sin(a * 1.7) * 0.3));
+    nodo(q, cc, 0.06); hilo(C, q, cc, 0.5);
+  }
+  // monederos del top (solo dibujo): magenta = aparece en otros tokens según la sala
+  const ds = ar ? ar.duenos.filter(d => !d.es_creador).slice(0, 8) : [];
+  ds.forEach((d, k) => {
+    const a = -1.1 + (k / Math.max(1, ds.length - 1)) * 2.2;
+    const q = new THREE.Vector3(Math.cos(a) * 1.15, Math.sin(a) * 0.75, Math.sin(a * 2.3) * 0.35);
+    const c = d.repetido ? "#ff6ad5" : "#2ad4c9"; nodo(q, c, d.repetido ? 0.09 : 0.065); hilo(T, q, c, d.repetido ? 0.7 : 0.35);
+  });
+  const rep = ds.filter(d => d.repetido).length;
+  holoTxt.pintar((g, w, h) => {
+    g.clearRect(0, 0, w, h); g.fillStyle = "rgba(10,10,4,.8)"; g.fillRect(0, 0, w, h); g.textAlign = "center";
+    g.fillStyle = b6 ? "#ff4d5e" : "#c9cfdd"; g.fillText(encajar(g, `creador: ${ar ? ar.previos : "?"} tokens antes · B6 ${b6 ? "SÍ" : u.b6 === 0 ? "no" : "?"}`, w - 24, 34, true), w / 2, 46);
+    g.fillStyle = b4 ? "#ff4d5e" : "#c9cfdd"; g.fillText(encajar(g, `araña del juez · B4 ${b4 ? "SÍ" : u.b4 === 0 ? "no" : "?"}`, w - 24, 34, true), w / 2, 92);
+    g.fillStyle = "#7d8499"; g.fillText(encajar(g, `monederos: ${ds.length} (${rep} vistos en otros · solo visual)`, w - 24, 24, false), w / 2, 132);
+  }, `${u.mint}|${b4}|${b6}|${ar ? ar.previos : "-"}|${ds.length}|${rep}`);
+}
+async function pedirHolo(u) {
+  if (holoPidiendo || u.mint === holoMint) return;
+  holoPidiendo = true;
+  try {
+    const resp = await fetch("/datos_token?mint=" + encodeURIComponent(u.mint), { cache: "no-store" });
+    const d = resp.ok ? await resp.json() : null;
+    construirHolo(u, d && d.arana ? d.arana : null);
+    holoMint = u.mint;
+  } catch (e) { construirHolo(u, null); holoMint = u.mint; }
+  finally { holoPidiendo = false; }
+}
+
+// ---------------- robots ----------------
+let clips = null, alto = 1, GLB = null;
+const robots = {}, mixers = [];
+function anim(R, nombre, { una = false, rep = Infinity, alFinal = false } = {}) {
+  const clip = clips && clips[nombre]; if (!clip) return null;
+  const a = R.mx.clipAction(clip);
+  if (R.actual === a && R.nombre === nombre) return a;
+  a.reset(); a.setLoop(una ? THREE.LoopOnce : THREE.LoopRepeat, rep); a.clampWhenFinished = una;
+  if (alFinal) a.time = clip.duration - 0.01;
+  a.play();
+  if (R.actual && R.actual !== a) { R.actual.fadeOut(0.3); a.fadeIn(0.3); }
+  R.actual = a; R.nombre = nombre; return a;
+}
+function crearRobot(color) {
+  const rb = SkeletonUtils.clone(GLB.scene); rb.scale.setScalar(1.95 / alto);
+  const hueso = {};
+  rb.traverse(o => {
+    if (o.isBone) hueso[o.name.replace(/\./g, "")] = o;
+    if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.material = o.material.clone(); if (o.material.name === "Main") o.material.color.set(color); }
+  });
+  const mx = new THREE.AnimationMixer(rb); mixers.push(mx); esc.add(rb);
+  // postura base de los huesos que movemos a mano: se restaura cada fotograma (si la animación no los controla,
+  // los giros se sumarían fotograma a fotograma y el robot acabaría retorcido)
+  const reposo = ["Head", "UpperArmL", "UpperArmR", "LowerArmL", "LowerArmR"].filter(n => hueso[n]).map(n => [hueso[n], hueso[n].quaternion.clone()]);
+  return { rb, mx, hueso, reposo, actual: null, nombre: "", caido: null, hasta: 0, mezcla: 0, fase: Math.random() * 10 };
+}
+function posturaSentado(p, R) {
+  if (p.juez) { R.rb.position.set(p.x - 1.45, 0, p.z + 0.9); R.rb.rotation.y = 0.75; anim(R, "Idle"); }
+  else { R.rb.position.set(p.x, 0.3, p.z + 1.05); R.rb.rotation.y = Math.PI; anim(R, "Sitting", { una: true, alFinal: true }); }
+}
+function posturaCaido(p, R) {
+  R.rb.position.set(p.juez ? p.x - 1.45 : p.x, 0, p.z + (p.juez ? 0.9 : 1.9)); R.rb.rotation.y = Math.PI;
+  anim(R, "Death", { una: true });
+}
+new GLTFLoader().load("/estatico/modelos/RobotExpressive.glb", (gltf) => {
+  GLB = gltf; clips = Object.fromEntries(gltf.animations.map(a => [a.name, a]));
+  const b = new THREE.Box3().setFromObject(gltf.scene); alto = b.max.y - b.min.y;
+  for (const p of PUESTOS) {
+    const R = crearRobot(p.col); robots[p.id] = R;
+    if (p.patrulla) { R.rb.position.set(-9, 0, -1.2); anim(R, "Walking"); }
+    else posturaSentado(p, R);
+    R.mx.addEventListener("finished", e => { if (p.juez && R.gesto && e.action === R.gesto) { R.gesto = null; if (!R.caido) anim(R, "Idle"); } });
+  }
+  $("aviso").textContent = "";
+  if (D) aplicar(D, true);
+}, undefined, () => { $("aviso").textContent = "no se pudo cargar el robot (/estatico/modelos/RobotExpressive.glb)"; });
+
+// movimiento extra sobre la postura de la animación: trabajando = teclear rápido mirando la pantalla;
+// descansando = respirar y mirar alrededor despacio
+function moverHuesos(p, R, s) {
+  const h = R.hueso, t = s + R.fase, trabaja = ahoraS() < R.hasta;
+  R.mezcla += ((trabaja ? 1 : 0) - R.mezcla) * 0.08; const k = R.mezcla;
+  if (h.Head) { h.Head.rotateX(k * (0.25 + Math.sin(t * 9) * 0.05)); h.Head.rotateY((1 - k) * Math.sin(t * 0.5) * 0.45); }
+  // (giros medidos con una prueba aparte: UpperArm +X lleva las manos hacia delante, a la altura de la mesa)
+  const brazo = (lado, f) => {
+    const sup = h["UpperArm" + lado], inf = h["LowerArm" + lado]; if (!sup || !inf) return;
+    sup.rotateX(k * (1.1 + Math.sin(t * 16 + f) * 0.08)); inf.rotateX(k * (-0.15 + Math.sin(t * 16 + f) * 0.22));
+  };
+  if (p.id === "riesgo" && U.riesgo.golpe >= 0) {        // el sello: brazo derecho sube y baja con el sello
+    const g = Math.sin(Math.min(1, U.riesgo.golpe) * Math.PI);
+    if (h.UpperArmR) h.UpperArmR.rotateX(1.1 + 1.1 * g); brazo("L", 0);
+  } else { brazo("L", 0); brazo("R", Math.PI); }
+}
+
+// ---------------- datos ----------------
+let D = null, ultimoOk = 0, previo = null;
+const muestras = [];   // {t, r}: fotos/min por max(rowid), como en /sala
+let fotosMin = null, juezMint = null;
+function estadoDe(d, ag) {
+  if (!ag) return { alarma: false };
+  const a = d.agentes.find(x => x.agente === ag);
+  if (!a) return { alarma: true, motivo: "sin latido" };
+  if (!a.alarma) return { alarma: false, a };
+  return { alarma: true, a, motivo: a.edad_s === null ? "sin latido" : a.estado !== "ok" ? a.estado : "latido viejo" };
+}
+const procDe = (d, ag) => { const a = d.agentes.find(x => x.agente === ag); return a ? a.procesados : null; };
+// marca de actividad de cada agente: si cambia entre dos lecturas, su robot trabaja un rato
+function marcas(d) {
+  return {
+    rastreador: d.fotos_max_rowid, riesgo: d.decisiones[0] && d.decisiones[0].ts,
+    analista: d.analisis_v1[0] && d.analisis_v1[0].mint, analista_v2: d.analisis_v2[0] && d.analisis_v2[0].mint,
+    tenedores: d.tenedores[0] && d.tenedores[0].mint, juez: d.ultimo_juicio && d.ultimo_juicio.mint,
+    contable: procDe(d, "contable"), archivista: procDe(d, "archivista"),
+    supervivientes: procDe(d, "supervivientes"), escaparate: procDe(d, "escaparate"),
+  };
+}
+const nuevosDesde = (lista, viejos) => { const s = new Set((viejos || []).map(x => x.mint)); return (lista || []).filter(x => !s.has(x.mint)); };
+function disparar(d, ant) {
+  const M = marcas(d), A = marcas(ant), pasoMs = REFRESCO_MS / 1000;
+  for (const id in M) {
+    const p = P[id], R = robots[id];
+    if (M[id] !== A[id] && M[id] != null && R && !p.alarma) R.hasta = ahoraS() + pasoMs * 2.2;
+  }
+  const ok = id => !P[id].alarma;
+  // riesgo: un papel por decisión nueva (verde = pasa hacia los analistas, rojo = descarte a la papelera)
+  if (ok("riesgo")) {
+    const tsAnt = ant.decisiones[0] ? ant.decisiones[0].ts : 0;
+    const nuevas = d.decisiones.filter(x => x.ts > tsAnt).slice(0, 8);
+    nuevas.forEach((x, i) => programar(i * pasoMs / Math.max(1, nuevas.length), () => {
+      U.riesgo.golpe = 0;
+      const pr = P.riesgo, desde = new THREE.Vector3(pr.x + 0.7, 1.0, pr.z + 0.15);
+      enviar(desde, x.pasa === 1 ? new THREE.Vector3(P.analista.x, 1.0, P.analista.z + 0.2) : new THREE.Vector3(pr.x + 1.3, 0.1, pr.z + 1.8),
+        x.pasa === 1 ? "#3ddc84" : "#ff4d5e", { forma: "papel", alto: 1.1, dur: 1.0 });
+    }));
+  }
+  // analistas: pregunta a Qwen (va al servidor) y respuesta de vuelta
+  for (const [id, lista, viejo] of [["analista", d.analisis_v1, ant.analisis_v1], ["analista_v2", d.analisis_v2, ant.analisis_v2]]) {
+    if (!ok(id)) continue;
+    const nuevos = nuevosDesde(lista, viejo).slice(0, 4), pa = P[id], mesa = new THREE.Vector3(pa.x, 1.9, pa.z - 0.2);
+    nuevos.forEach((_, i) => programar(i * pasoMs / Math.max(1, nuevos.length), () => {
+      enviar(mesa, SERVIDOR, pa.col, { alto: 2.6, dur: 1.4 });
+      programar(1.6, () => enviar(SERVIDOR, mesa, "#3ddc84", { alto: 2.6, dur: 1.4 }));
+    }));
+  }
+  // tenedores: onda hacia Helius por cada consulta nueva
+  if (ok("tenedores")) {
+    const nuevos = nuevosDesde(d.tenedores, ant.tenedores).slice(0, 4), pt = P.tenedores;
+    nuevos.forEach((_, i) => programar(i * pasoMs / Math.max(1, nuevos.length), () => {
+      onda(new THREE.Vector3(pt.x + 0.8, 1.45, pt.z + 0.05), "#2ad4c9", { radio: 1.4, dur: 1.6 });
+      enviar(new THREE.Vector3(pt.x + 0.8, 1.4, pt.z), new THREE.Vector3(pt.x + 0.8, 6.5, pt.z - 1), "#2ad4c9", { alto: 0.3, dur: 1.2, tam: 0.07 });
+    }));
+  }
+  // archivista: carpetas a la estantería; contable: monedas; supervivientes: latidos
+  const delta = id => Math.max(0, (M[id] ?? 0) - (A[id] ?? 0));
+  if (ok("archivista")) { const n = Math.min(5, delta("archivista")), pa = P.archivista;
+    for (let i = 0; i < n; i++) programar(i * pasoMs / n, () => enviar(new THREE.Vector3(pa.x, 1.1, pa.z + 0.1), ESTANTE, "#e8c547", { forma: "carpeta", alto: 1.6, dur: 1.5 })); }
+  if (ok("contable")) { const n = Math.min(4, delta("contable"));
+    for (let i = 0; i < n; i++) programar(i * pasoMs / n, moneda); }
+  if (ok("supervivientes")) { const n = Math.min(4, delta("supervivientes"));
+    for (let i = 0; i < n; i++) programar(i * pasoMs / n, () => { U.supervivientes.latido = 1;
+      onda(U.supervivientes.c.position.clone(), "#7bd88f", { radio: 0.9, dur: 0.9 }); }); }
+}
+
+function aplicar(d, sinAcciones = false) {
+  muestras.push({ t: d.ahora, r: d.fotos_max_rowid });
+  while (muestras.length > 2 && d.ahora - muestras[1].t >= 30) muestras.shift();
+  const m0 = muestras[0], dt = d.ahora - m0.t;
+  if (dt >= 30 && d.fotos_max_rowid >= m0.r) fotosMin = (d.fotos_max_rowid - m0.r) / dt * 60;
+  const dec = d.decisiones, pasan = dec.filter(x => x.pasa === 1).length;
+  const v1 = d.analisis_v1[0], v2 = d.analisis_v2[0], te = d.tenedores[0], j = d.juez || {}, ult = d.ultimo_juicio;
+  const proc = ag => nf(procDe(d, ag));
+  const nAlarmas = d.agentes.filter(a => a.alarma).length;
+  const nOps = (d.mesas || []).reduce((s, m) => s + m.n + m.n_sin_dato, 0);
+  const punt = x => !x ? "—" : x.puntuacion === null ? "sin dato" : `${x.puntuacion}/10 ${x.etiqueta || ""}`;
+  const V = {
+    rastreador: [fotosMin === null ? "midiendo…" : `${nf(fotosMin)} fotos/min`, `tokens ${proc("rastreador")}`],
+    riesgo: [`${pasan} de ${dec.length}${dec.length >= 300 ? "+" : ""}`, "pasan en 10 min"],
+    analista: [punt(v1), `analizados ${proc("analista")}`],
+    analista_v2: [punt(v2), v2 ? (v2.meta_ok === 1 ? "con metadatos" : "sin metadatos") : ""],
+    tenedores: [!te ? "—" : te.error ? "error" : `top10 ${nf(te.top10_pct)} %`, te && !te.error ? `creador ${nf(te.creador_pct, 1)} %` : `consultas ${proc("tenedores")}`],
+    juez: [ult ? ult.veredicto.toUpperCase().replace("_", " ") : "—", `1 h: ${j.vigilar ?? 0} vig · ${j.descartar ?? 0} desc`],
+    contable: [`${nf(nOps)} oper.`, "mesas desde 18:39"],
+    archivista: [`${proc("archivista")} filas`, "resúmenes"],
+    supervivientes: [`${proc("supervivientes")} lecturas`, "procesados"],
+    escaparate: [`${proc("escaparate")} vistos`, "procesados"],
+    vigilante: [`${nAlarmas} alarmas`, nAlarmas ? "¡hay agentes en rojo!" : "si todo va bien, calla"],
+  };
+  for (const p of PUESTOS) {
+    const s = estadoDe(d, p.ag), [val, pie] = V[p.id];
+    if (s.alarma) {
+      pintarMonitor(p, p.nom.replace(/^\d+ /, ""), "CAÍDO", s.motivo, "#ff4d5e", "#2a0508");
+      cartel(p, "#2a0508", "#ff4d5e", "CAÍDO · " + s.motivo);
+    } else {
+      pintarMonitor(p, p.nom.replace(/^\d+ /, ""), val, p.hace || pie, p.id === "vigilante" && nAlarmas ? "#ff4d5e" : p.col, "#05070d");
+      cartel(p, p.juez ? "#2a2608" : "#0b0d15", p.juez ? "#e8d44d" : "#ffffff", val);
+    }
+    p.alarma = s.alarma;
+    p.brillo.color.set(s.alarma ? "#ff4d5e" : p.col);
+    const R = robots[p.id];
+    if (R && !p.patrulla && R.caido !== s.alarma) { R.caido = s.alarma; R.hasta = 0; s.alarma ? posturaCaido(p, R) : posturaSentado(p, R); }
+  }
+  // juez: foco y gesto según el último veredicto; holograma con la araña de ese token
+  const pj = P.juez, Rj = robots.juez;
+  if (ult) {
+    pj.foco.color.set(ult.veredicto === "descartar" ? "#ff4d5e" : ult.veredicto === "vigilar" ? "#3ddc84" : "#8a90a3");
+    if (ult.mint !== juezMint && Rj) {
+      juezMint = ult.mint;
+      if (!Rj.caido) {
+        const g = ult.veredicto === "descartar" ? "No" : ult.veredicto === "vigilar" ? "Yes" : null;
+        if (g) { Rj.nombre = ""; Rj.gesto = anim(Rj, g, { una: true }); }
+      }
+    }
+    pedirHolo(ult);
+  }
+  if (previo && !sinAcciones) disparar(d, previo);
+  previo = d;
+  actualizarToken(d);
+  pintarMuro(d.mesas || []);
+  pintarPaneles(d);
+}
+
+function celda(fila, texto, clase) { const td = fila.insertCell(); td.textContent = texto; if (clase) td.className = clase; return td; }
+const pct = v => v === null || v === undefined ? "—" : `${v >= 0 ? "+" : ""}${nf(v * 100, 1)} %`;
+const CLASE_ETQ = { "REFERENCIA": "tag ref", "POR ENCIMA": "tag enc", "POR DEBAJO": "tag deb" };
+const BANDERAS = [["b1", "B1 creador vendió"], ["b2", "B2 creador >5 %"], ["b3", "B3 top10 alto"], ["b4", "B4 araña"], ["b5", "B5 sin redes"], ["b6", "B6 repite"]];
+function pintarPaneles(d) {
+  $("reloj").textContent = new Date(d.ahora * 1000).toLocaleTimeString("es-ES");
+  const cont = $("mesasCont"), ms = d.mesas || [];
+  cont.replaceChildren();
+  if (!ms.some(m => m.n + m.n_sin_dato > 0)) cont.textContent = "sin operaciones todavía (desde 18:39)";
+  else {
+    const tb = document.createElement("table"), cab = tb.insertRow();
+    for (const c of ["MESA", "OPER.", "MEDIA", "IC 95 %", "SALDO SOL", ""]) { const th = document.createElement("th"); th.textContent = c; cab.append(th); }
+    for (const m of ms) {
+      const f = tb.insertRow();
+      celda(f, NOM_MESA[m.mesa] || m.mesa);
+      celda(f, `${m.n}${m.n_sin_dato ? ` (+${m.n_sin_dato})` : ""}`);
+      celda(f, pct(m.media), m.media === null ? "" : m.media < 0 ? "neg" : "pos");
+      celda(f, m.ic95 ? `${nf(m.ic95[0] * 100, 1)} / ${nf(m.ic95[1] * 100, 1)}` : "—");
+      celda(f, nf(m.saldo_sol, 3), m.saldo_sol < 0 ? "neg" : m.saldo_sol > 0 ? "pos" : "");
+      const t = document.createElement("span"); t.className = CLASE_ETQ[m.etiqueta] || "tag";
+      t.textContent = m.etiqueta === "RUIDO" && m.mesa !== "BASE" ? `RUIDO ${m.n}/220` : m.etiqueta;
+      f.insertCell().append(t);
+    }
+    cont.append(tb);
+  }
+  const u = d.ultimo_juicio, j = d.juez || {};
+  for (const v of ["vigilar", "descartar", "sin_dato"]) $("bt_" + v).classList.toggle("on", !!u && u.veredicto === v);
+  const fl = $("flags"); fl.replaceChildren();
+  for (const [k, txt] of BANDERAS) {
+    const e = document.createElement("div"), v = u ? u[k] : null;
+    e.className = "f" + (v === 1 ? " si" : v === 0 ? " no" : "");
+    e.textContent = txt + (v === null && u ? (k === "b3" ? " (sin umbral)" : " (sin dato)") : "");
+    fl.append(e);
+  }
+  if (u) {
+    const t = $("juezTok"); t.replaceChildren();
+    const s = document.createElement("small"); s.textContent = ` · ${u.mint.slice(0, 4)}…${u.mint.slice(-4)} · ${u.n_banderas ?? "?"} banderas`;
+    t.append(document.createTextNode(u.nombre), s);
+    $("juezHace").textContent = `hace ${nf(Math.max(0, d.ahora - u.ts_juicio))} s`;
+  }
+  $("juezHora").textContent = `Última hora: ${j.vigilar ?? 0} vigilar · ${j.descartar ?? 0} descartar · ${j.sin_dato ?? 0} sin dato`;
+}
+
+function conexion(ok, texto) { const c = $("conexion"); c.className = "chip " + (ok ? "ok" : "mal"); c.textContent = texto; }
+async function pedir() {
+  try {
+    const resp = await fetch("/datos_sala", { cache: "no-store" });
+    const d = await resp.json();
+    if (!resp.ok || d.error) throw new Error(d.error || "HTTP " + resp.status);
+    D = d; ultimoOk = Date.now(); aplicar(d);
+    const alarmas = d.agentes.filter(a => a.alarma).length;
+    conexion(!alarmas, alarmas ? `${alarmas} agente(s) en rojo` : "datos en vivo");
+  } catch (e) {
+    conexion(false, "sin datos: " + String(e.message || e).slice(0, 60));
+  } finally { setTimeout(pedir, REFRESCO_MS); }
+}
+pedir();
+setInterval(() => { if (ultimoOk && Date.now() - ultimoOk > REFRESCO_MS * 4) conexion(false, `datos de hace ${Math.round((Date.now() - ultimoOk) / 1000)} s`); }, 1000);
+
+// ---------------- bucle ----------------
+const reloj = new THREE.Clock();
+let vigObjetivo = 9;
+const tmp = new THREE.Vector3();
+function bucle() {
+  const dt = Math.min(reloj.getDelta(), 0.1), s = reloj.elapsedTime, ya = ahoraS();
+  for (const id in robots) for (const [b, q] of robots[id].reposo) b.quaternion.copy(q);
+  mixers.forEach(m => m.update(dt));
+  for (const p of PUESTOS) { const R = robots[p.id]; if (R && !p.patrulla && !p.juez && !R.caido) moverHuesos(p, R, s); }
+  ctl.update();
+  for (let i = cola.length - 1; i >= 0; i--) if (cola[i].t <= ya) { const c = cola.splice(i, 1)[0]; c.fn(); }
+  // viajes en arco
+  for (let i = viajes.length - 1; i >= 0; i--) {
+    const v = viajes[i], u = (ya - v.t0) / v.dur;
+    if (u >= 1) { esc.remove(v.m); v.m.geometry.dispose(); viajes.splice(i, 1); continue; }
+    tmp.lerpVectors(v.a, v.b, u); tmp.y += Math.sin(u * Math.PI) * v.alto; v.m.position.copy(tmp); v.m.rotation.y += dt * 4;
+  }
+  for (let i = ondas.length - 1; i >= 0; i--) {
+    const o = ondas[i], u = (ya - o.t0) / o.dur;
+    if (u >= 1) { esc.remove(o.m); o.m.geometry.dispose(); ondas.splice(i, 1); continue; }
+    o.m.scale.setScalar(0.05 + u * o.radio); o.m.material.opacity = 0.8 * (1 - u);
+  }
+  // utensilios
+  const trabaja = id => robots[id] && ya < robots[id].hasta && !P[id].alarma;
+  { // rastreador: flashes al ritmo de las fotos/min reales (con un tope para no deslumbrar)
+    const u = U.rastreador;
+    if (trabaja("rastreador") && fotosMin && ya >= u.prox) { u.flash.intensity = 25; u.prox = ya + Math.max(0.35, 60 / (fotosMin / 40)); }
+    u.flash.intensity *= Math.pow(0.002, dt);
+  }
+  U.tenedores.g.rotation.y += dt * (trabaja("tenedores") ? 2.2 : 0.15);
+  { const u = U.escaparate, on = trabaja("escaparate");
+    u.piv.rotation.y += dt * (on ? 1.8 : 0); u.haz.material.opacity += ((on ? 0.16 : 0) - u.haz.material.opacity) * 0.05; }
+  { const u = U.supervivientes; u.latido = Math.max(0, u.latido - dt * 2.5);
+    u.c.scale.setScalar(1 + 0.45 * Math.sin(u.latido * Math.PI)); u.c.rotation.y += dt * 0.6; }
+  for (const m of U.contable.g.children) m.position.y += (m.userData.y - m.position.y) * Math.min(1, dt * 7);
+  if (U.riesgo.golpe >= 0) { U.riesgo.golpe += dt * 3; const g = Math.sin(Math.min(1, U.riesgo.golpe) * Math.PI);
+    U.riesgo.g.position.y = 0.9 + g * 0.35; if (U.riesgo.golpe >= 1) U.riesgo.golpe = -1; }
+  { const pens = trabaja("analista") || trabaja("analista_v2");    // LEDs de Qwen: rápidos mientras piensa
+    ledsQwen.forEach((l, k) => { l.material.emissiveIntensity = pens ? 0.4 + 1.6 * (Math.sin(s * 14 + k * 1.3) > 0.2 ? 1 : 0) : 1.2; }); }
+  // vigilante: patrulla con linterna; si hay alarma va corriendo al primer puesto caído y saluda delante de él
+  const Rv = robots.vigilante;
+  if (Rv) {
+    const caido = PUESTOS.find(p => p.alarma && !p.patrulla);
+    const meta = caido ? caido.x : vigObjetivo, v = Rv.rb, dx = meta - v.position.x;
+    if (Math.abs(dx) > 0.15) { v.position.x += Math.sign(dx) * Math.min(Math.abs(dx), (caido ? 2.4 : 1.2) * dt); v.rotation.y = dx > 0 ? Math.PI / 2 : -Math.PI / 2; anim(Rv, caido ? "Running" : "Walking"); }
+    else if (caido) { v.rotation.y = caido.z < 0 ? Math.PI : 0; anim(Rv, "Wave"); }
+    else vigObjetivo = -vigObjetivo;
+    linterna.visible = true;
+    linterna.position.set(v.position.x, 1.3, v.position.z);
+    linterna.rotation.set(0, v.rotation.y, 0); linterna.rotateX(-Math.PI / 2 + 0.45);
+  } else linterna.visible = false;
+  // token
+  if (token.visible) {
+    const xt = -10.2 + TOK.etapa * 3.25; TOK.x += (xt - TOK.x) * Math.min(1, dt * 1.5);
+    token.position.set(TOK.x, 0.5 + Math.abs(Math.sin(s * 4)) * 0.15, ZTOK); token.rotation.y = s;
+    luzTok.position.copy(token.position); spTok.position.set(TOK.x, 1.55, ZTOK);
+  }
+  holo.rotation.y = s * 0.35; holo.position.y = HOLO.y + Math.sin(s * 1.2) * 0.06;
+  for (const p of PUESTOS) p.brillo.intensity = p.alarma ? 3 + 3 * Math.abs(Math.sin(s * 5)) : (p.juez ? 5 : 2.2);
+  r.render(esc, cam); requestAnimationFrame(bucle);
+}
+requestAnimationFrame(bucle);
+</script></body></html>

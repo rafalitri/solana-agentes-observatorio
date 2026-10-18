@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sala de Agentes</title>
+<style>
+:root{
+  --bg:#07080d; --panel:#0e1019; --panel2:#131623; --line:#232838; --txt:#d9deea; --mut:#7d8499;
+  --acc:#ff3fa4; --ok:#3ddc84; --warn:#ffb020; --bad:#ff4d5e; --info:#4da3ff;
+  --c-superv:#7bd88f; --c-escaparate:#ffa94d; --c-juez:#e8d44d; --c-rastreador:#4da3ff; --c-riesgo:#ff5d73; --c-v1:#ff8a3d; --c-v2:#a97bff;
+  --c-tenedores:#2ad4c9; --c-arana:#ff6ad5; --c-archivista:#e8c547; --c-vigilante:#f2f2f2; --c-contable:#5ec2ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.35 ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace}
+.marco{max-width:1280px;margin:0 auto;padding:12px 16px 24px;border-left:3px solid var(--acc);border-right:3px solid var(--acc);min-height:100vh;background:linear-gradient(180deg,#0a0b12,#07080d)}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0 12px;border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:20px;letter-spacing:.5px}
+.logo i{display:inline-block;width:22px;height:22px;border-radius:6px;background:conic-gradient(var(--acc),var(--info),var(--ok),var(--acc))}
+.chip{border:1px solid var(--line);border-radius:4px;padding:3px 8px;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+.chip.acc{border-color:var(--acc);color:var(--acc)}
+.chip.ok{border-color:#1f5a3a;color:var(--ok)}
+.reloj{margin-left:auto;font-size:20px;font-weight:700;color:var(--ok);border:1px solid #1f5a3a;padding:2px 10px;border-radius:4px}
+#aviso{display:none;margin-top:10px;padding:6px 10px;border:1px solid var(--bad);border-radius:4px;background:#2a0c12;color:var(--bad);font-weight:700}
+.tarjetas{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.t{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-height:92px;position:relative}
+.t.alarma{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset,0 0 14px rgba(255,77,94,.25)}
+.t .cab{display:flex;align-items:center;gap:8px}
+.t .ico{width:18px;height:20px;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);position:relative;opacity:.9}
+.t .ico:after{content:"";position:absolute;inset:4px;background:#0e1019;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.t .nom{font-weight:800;letter-spacing:.6px}
+.t .rol{color:var(--mut);font-size:10px;margin-top:-2px}
+.t .est{position:absolute;right:8px;top:8px;font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid #1f5a3a;color:var(--ok)}
+.t.alarma .est{border-color:var(--bad);color:var(--bad)}
+.t .met{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}
+.t .met b{font-size:16px}
+.t .bar{height:3px;background:var(--line);border-radius:2px;margin-top:4px;overflow:hidden}
+.t .bar i{display:block;height:100%;width:50%}
+.t .cita{color:var(--mut);font-size:10px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sala{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px;position:relative}
+.sala .cinta{color:var(--mut);font-size:11px;text-align:center;padding:2px 0 6px;letter-spacing:.5px}
+.sala .cinta b{color:var(--ok)}
+canvas{display:block;width:100%;image-rendering:pixelated}
+.abajo{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px;margin-top:8px}
+.p{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px}
+.p h3{margin:0 0 8px;font-size:11px;letter-spacing:.8px;color:var(--mut);display:flex;justify-content:space-between}
+.p h3 span{color:var(--acc)}
+.fila{min-width:0;flex-wrap:wrap;display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #1c2030;font-size:12px}
+.fila:last-child{border-bottom:0}
+.fila .k{color:var(--mut)}
+.mesas{margin-top:8px}
+.mesas table{width:100%;border-collapse:collapse;font-size:12px}
+.mesas th{color:var(--mut);font-weight:400;text-align:right;padding:2px 6px;font-size:10px}
+.mesas td{text-align:right;padding:3px 6px;border-top:1px dashed #1c2030}
+.mesas th:first-child,.mesas td:first-child{text-align:left}
+.mesas .nota{color:var(--mut);font-size:11px;margin-top:6px}
+.e-RUIDO{color:var(--mut)} .e-ENCIMA{color:var(--ok)} .e-DEBAJO{color:var(--bad)} .e-REF{color:#fff}
+.mesas{overflow-x:auto}
+.pass{color:var(--ok)} .fail{color:var(--bad)} .pend{color:var(--warn)}
+@media (max-width:900px){.marco{padding:10px 12px 20px;border-width:2px}.logo{font-size:16px}.chip{font-size:10px}.tarjetas{grid-template-columns:repeat(2,1fr)}.abajo{grid-template-columns:1fr}.reloj{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="marco">
+<header>
+  <div class="logo"><i></i>SALA DE AGENTES</div>
+  <span class="chip acc">Observatorio · sin dinero real</span>
+  <div class="reloj" id="reloj">--:--:--</div>
+</header>
+<div id="aviso">Sin conexión con el panel</div>
+
+<section class="tarjetas" id="tarjetas"></section>
+
+<section class="sala">
+  <div class="cinta" id="cinta">—</div>
+  <canvas id="cv"></canvas>
+</section>
+
+<section class="abajo">
+  <div class="p"><h3>ACTIVIDAD · ÚLTIMOS 60 MIN <span>fotos/min · pasan/min</span></h3><canvas id="graf"></canvas></div>
+  <div class="p"><h3>ÚLTIMO TOKEN QUE PASA <span id="utNom">—</span></h3><div id="ut"></div></div>
+  <div class="p"><h3>UMBRALES · CADA NÚMERO QUE CREEMOS <span>config.py</span></h3><div id="umb"></div></div>
+</section>
+
+<section class="p mesas">
+  <h3>MESAS EN PAPEL · SIN DINERO <span>desde 18:39</span></h3>
+  <div id="mesasCont"></div>
+  <div class="nota">Solo para mirar: no decide nada. Hasta 220 operaciones y sin solaparse con la base, es ruido.</div>
+</section>
+</div>
+<canvas id="aranaCv" style="position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:50"></canvas>
+
+<script>
+"use strict";
+// Datos REALES de /datos_sala (cada REFRESCO_MS) y /datos_token (solo cuando cambia el último token que pasa).
+// Todo texto que viene de la BD (nombres, motivos...) se pinta con textContent o fillText, nunca como HTML.
+const REFRESCO_MS = Number("__REFRESCO_MS__") || 5000;
+const AG = [
+ {id:"rastreador", nom:"RASTREADOR", rol:"vigila pump.fun y saca fotos", col:"--c-rastreador"},
+ {id:"riesgo",     nom:"RIESGO",     rol:"reglas: pasa o descarte",       col:"--c-riesgo"},
+ {id:"analista",   nom:"ANALISTA v1",rol:"Qwen lee nombre y símbolo",     col:"--c-v1"},
+ {id:"analista_v2",nom:"ANALISTA v2",rol:"Qwen + metadatos IPFS",         col:"--c-v2"},
+ {id:"tenedores",  nom:"TENEDORES",  rol:"quién tiene los tokens",        col:"--c-tenedores"},
+ {id:"archivista", nom:"ARCHIVISTA", rol:"resume cada token a los 30 min",col:"--c-archivista"},
+ {id:"vigilante",  nom:"VIGILANTE",  rol:"latidos y alarmas",             col:"--c-vigilante"},
+ {id:"arana",      nom:"ARAÑA",rol:"conecta creador y monederos",col:"--c-arana"},
+ {id:"supervivientes",nom:"SUPERVIVIENTES",rol:"sigue 24 h a los vivos a los 30 min",col:"--c-superv"},
+ {id:"escaparate", nom:"ESCAPARATE", rol:"CTO, perfiles y boosts de DexScreener",col:"--c-escaparate"},
+ {id:"juez",       nom:"JUEZ",       rol:"junta las señales y juzga cada token antes del resultado",col:"--c-juez"},
+ {id:"contable",   nom:"CONTABLE",   rol:"lleva las cuentas en papel de cada mesa",col:"--c-contable"},
+];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rnd = (a,b)=>a+Math.random()*(b-a), pick = a=>a[Math.floor(Math.random()*a.length)];
+const corto = (s,n=16)=>{ s=String(s??""); return s.length>n? s.slice(0,n-1)+"…" : s; };
+const fmt = (v,d=0)=> v===null||v===undefined||Number.isNaN(v)? "—" : Number(v).toLocaleString("es",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+// ---------------- estado real ----------------
+const est = {rastreador:"ok",analista:"ok",analista_v2:"ok",tenedores:"ok",archivista:"ok",vigilante:"ok"};
+// patas de la araña: 0-3 izquierdas (delante→atrás), 4-7 derechas; "panel" = la página recibe datos
+const PATA_AG = ["rastreador","analista","analista_v2","tenedores","archivista","supervivientes","escaparate","panel"];
+const lat = {}, toques = {};   // ts del último latido visto por agente; toques pendientes (agente -> instante)
+function estadoPata(ag){
+  if(ag==="panel") return document.getElementById("aviso").style.display==="block"?"sin conexión":"ok";
+  return D? (est[ag]||"sin_latido") : "ok";   // sin 1.ª lectura no hay nada que juzgar
+}
+const L = {};                 // agente -> fila de agentes_estado (con edad_s, procesados, errores)
+let D = null;                 // última respuesta de /datos_sala
+let primera = true;           // la 1.ª lectura NO anima el historial
+const visto = {dec:new Set(), v1:new Set(), v2:new Set(), ten:new Set(), res:new Set()};
+const toks = new Map();       // mint -> token que pasa (siguiendo sus análisis)
+const leidosL = [];           // tokens con v1, v2 y tenedores hechos, esperando al archivista
+let nPend = 0, pilaArch = 0, descartes10 = 0, pasan10 = 0, dec10 = 0;
+const muestras = []; let fotosMin = null, fotosMax = 1; const fhist = [];
+let ultimo = null;
+const papeles=[]; const bocadillos=[]; const rayos=[];
+let LAT_MAX = 180;
+
+// ---------------- tarjetas (solo textContent) ----------------
+const tarj = {};
+const cont = document.getElementById("tarjetas");
+for(const a of AG){
+  const t = document.createElement("div"); t.className="t";
+  const cab = document.createElement("div"); cab.className="cab";
+  const ico = document.createElement("div"); ico.className="ico"; ico.style.background=`var(${a.col})`;
+  const tx = document.createElement("div");
+  const n = document.createElement("div"); n.className="nom"; n.textContent=a.nom; n.style.color=`var(${a.col})`;
+  const r = document.createElement("div"); r.className="rol"; r.textContent=a.rol;
+  tx.append(n,r); cab.append(ico,tx);
+  const e = document.createElement("div"); e.className="est"; e.textContent="ok";
+  const met = document.createElement("div"); met.className="met";
+  const k = document.createElement("span"); k.className="rol"; const v = document.createElement("b");
+  met.append(k,v);
+  const bar = document.createElement("div"); bar.className="bar"; const bi=document.createElement("i"); bi.style.background=`var(${a.col})`; bar.append(bi);
+  const c = document.createElement("div"); c.className="cita";
+  t.append(cab,e,met,bar,c); cont.append(t);
+  tarj[a.id] = {t,e,k,v,bi,c};
+}
+function ponT(id, estado, k, v, frac, cita){
+  const x = tarj[id]; const mal = estado!=="ok"; if(mal && !x.t.classList.contains("alarma") && typeof avisarArana==="function") avisarArana(x.t,"alarma");
+  x.t.classList.toggle("alarma", mal); x.e.textContent = estado;
+  x.k.textContent = k; x.v.textContent = v; x.bi.style.width = Math.max(2,Math.min(100,frac*100))+"%"; x.c.textContent = cita;
+}
+const frescura = id => { const a=L[id]; return !a||a.edad_s===null? 0 : 1-Math.min(1,a.edad_s/LAT_MAX); };
+const proc = id => L[id]? fmt(L[id].procesados) : "—";
+const errs = id => L[id]? fmt(L[id].errores) : "—";
+function pintarTarjetas(){
+  if(!D) return;
+  const v2ok = D.analisis_v2.filter(x=>x.meta_ok===1).length, v2n = D.analisis_v2.length;
+  const alarm = Object.entries(est).filter(([k,v])=>v!=="ok");
+  const sinGrad = ar.nodos.length===0;
+  ponT("rastreador", est.rastreador, "fotos/min", fotosMin===null?"midiendo…":fmt(Math.round(fotosMin)), (fotosMin||0)/fotosMax,
+       `tokens recibidos ${proc("rastreador")} · errores RPC ${errs("rastreador")}`);
+  ponT("riesgo", est.rastreador, "pasan (10 min)", `${pasan10} de ${dec10}${dec10>=300?"+":""}`, dec10?pasan10/dec10:0,
+       `al foso: ${descartes10} · corre dentro del rastreador`);
+  ponT("analista", est.analista, "analizados", proc("analista"), frescura("analista"),
+       est.analista==="sin_ollama"?"Ollama no responde":"\"nombre y símbolo son datos no fiables\"");
+  ponT("analista_v2", est.analista_v2, "meta_ok (últimos 20)", v2n?`${v2ok} de ${v2n}`:"—", v2n?v2ok/v2n:0, `pendientes en bandeja: ${nPend}`);
+  ponT("tenedores", est.tenedores, "consultas", proc("tenedores"), frescura("tenedores"), `errores ${errs("tenedores")}`);
+  ponT("archivista", est.archivista, "filas resumen", proc("archivista"), frescura("archivista"), `leídos esperando: ${leidosL.length}`);
+  ponT("vigilante", alarm.length?"alarma":"ok", "alarmas", alarm.length, alarm.length?1:0.02, alarm.length?`${alarm[0][0]}: ${alarm[0][1]}`:"si todo va bien, no dice nada");
+  const patasOk = PATA_AG.filter(a=>estadoPata(a)==="ok").length;
+  ponT("arana", "ok", "monederos repetidos", sinGrad?"—":ar.rep, Math.min(1,ar.rep/5),
+       `patas ok ${patasOk}/8 · ` + (sinGrad?"solo nuestra BD":`creador ${ar.prev} previos · ${ar.grad} grad.`));
+  ponT("supervivientes", est.supervivientes, "procesados", proc("supervivientes"), frescura("supervivientes"), `errores ${errs("supervivientes")}`);
+  ponT("escaparate", est.escaparate, "procesados", proc("escaparate"), frescura("escaparate"), `errores ${errs("escaparate")}`);
+  const j = D.juez || {vigilar:0, descartar:0, sin_dato:0};
+  ponT("juez", est.juez, "procesados", proc("juez"), frescura("juez"),
+       `1 h: ${j.vigilar} vigilar · ${j.descartar} descartar · ${j.sin_dato} sin dato`);
+  ponT("contable", est.contable, "procesados", proc("contable"), frescura("contable"), `errores ${errs("contable")}`);
+  pintarMesas();
+}
+
+// ---------------- mesas en papel (solo textContent) ----------------
+const COL_MESAS = ["mesa","n (sin dato)","media %","mediana %","IC 95 %","saldo SOL","caída máx SOL","etiqueta"];
+const CLASE_ETQ = {"RUIDO":"e-RUIDO","POR ENCIMA":"e-ENCIMA","POR DEBAJO":"e-DEBAJO","REFERENCIA":"e-REF"};
+const pct = v => v===null||v===undefined? "—" : fmt(v*100,1);
+function pintarMesas(){
+  const cont = document.getElementById("mesasCont"), ms = D.mesas || [];
+  cont.replaceChildren();
+  if(!ms.some(m=>m.n+m.n_sin_dato>0)){ cont.textContent = "sin operaciones todavía (desde 18:39)"; return; }
+  const tb = document.createElement("table"), cab = tb.insertRow();
+  for(const c of COL_MESAS){ const th = document.createElement("th"); th.textContent = c; cab.append(th); }
+  for(const m of ms){
+    const f = tb.insertRow();
+    const ic = m.ic95? `${pct(m.ic95[0])} a ${pct(m.ic95[1])}` : "—";
+    const cel = [m.mesa, `${m.n} (${m.n_sin_dato})`, pct(m.media), pct(m.mediana), ic, fmt(m.saldo_sol,3), fmt(m.caida_max_sol,3), m.etiqueta];
+    cel.forEach((t,i)=>{ const td = f.insertCell(); td.textContent = t; if(i===7) td.className = CLASE_ETQ[m.etiqueta]||""; });
+  }
+  cont.append(tb);
+}
+
+// ---------------- sala (canvas) ----------------
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const W=960, H=420;
+let esc=1;
+function ajustar(){
+  const ancho = cv.clientWidth || 960, dpr = window.devicePixelRatio||1;
+  esc = ancho/W; cv.width = Math.round(W*esc*dpr); cv.height = Math.round(H*esc*dpr);
+  cv.style.height = (H*esc)+"px"; ctx.setTransform(esc*dpr,0,0,esc*dpr,0,0); ctx.imageSmoothingEnabled=false;
+}
+window.addEventListener("resize", ajustar);
+
+const P = { // puestos
+  rastreador:{x:120,y:230}, riesgo:{x:290,y:230}, pend:{x:440,y:215},
+  analista:{x:590,y:165}, analista_v2:{x:590,y:300}, qwen:{x:700,y:230},
+  leidos:{x:790,y:215}, archivista:{x:895,y:230}, tenedores:{x:440,y:345},
+  papelera:{x:290,y:360}, vigilante:{x:60,y:370}
+};
+function r(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h);}
+function txt(s,x,y,c,t=10,al="center",peso=700){ctx.font=`${peso} ${t}px ui-monospace,Consolas,monospace`;ctx.textAlign=al;ctx.textBaseline="alphabetic";ctx.lineWidth=3;ctx.strokeStyle="rgba(5,6,10,.9)";ctx.strokeText(s,x,y);ctx.fillStyle=c;ctx.fillText(s,x,y);}
+
+function suelo(t){
+  r(0,0,W,H,"#06080e");
+  const g=ctx.createLinearGradient(0,0,0,120); g.addColorStop(0,"#0a0e18"); g.addColorStop(1,"#0d1220"); ctx.fillStyle=g; ctx.fillRect(0,0,W,120);
+  r(0,119,W,1,"rgba(77,163,255,.35)");
+  ctx.strokeStyle="rgba(77,163,255,.07)"; ctx.lineWidth=1;
+  for(let x=0;x<=W;x+=32){ctx.beginPath();ctx.moveTo(x+.5,121);ctx.lineTo(x+.5,H);ctx.stroke();}
+  for(let y=121;y<=H;y+=24){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke();}
+  for(let x=0;x<W;x+=48){ctx.strokeStyle="rgba(120,140,190,.06)";ctx.strokeRect(x+4.5,10.5,40,100);}
+  pantalla(t);
+  for(const [x,l] of [[90,"RASTREO"],[870,"ARCHIVO"]]){ctx.strokeStyle="rgba(77,163,255,.35)";ctx.strokeRect(x-34.5,24.5,68,70);r(x-30,28,60,62,"#090c15");txt(l,x,64,css("--mut"),9);}
+  for(const x of [20,270,690,940]) planta(x,112,t);
+  // reloj de pared
+  r(190,30,60,30,"#05070c"); txt(new Date().toTimeString().slice(0,5),220,50,css("--ok"),12);
+  // puerta del vigilante
+  r(18,300,50,100,"#0a0d16"); ctx.strokeStyle="rgba(77,163,255,.35)"; ctx.strokeRect(18.5,300.5,49,99); r(58,340,2,14,"rgba(61,220,132,.7)");
+}
+// ---- pantalla grande: velas del ultimo token + la araña tejiendo encima ----
+const SX=300, SY=8, SW=360, SH=106;
+function pantalla(t){
+  r(SX-3,SY-3,SW+6,SH+6,"#05070c"); r(SX,SY,SW,SH,"#0a0e18");
+  for(let k=1;k<4;k++) r(SX,SY+k*SH/4,SW,1,"#121827");
+  const tk=ultimo;
+  if(!tk){ txt("esperando un token que pase…",SX+SW/2,SY+SH/2,css("--mut"),10); return; }
+  const v=tk.velas;
+  if(!v){ txt(corto(tk.nom,30),SX+8,SY+14,"#eef1f8",10,"left"); txt("cargando…",SX+SW/2,SY+SH/2,css("--mut"),10); return; }
+  if(v.length<2){ txt(corto(tk.nom,30),SX+8,SY+14,"#eef1f8",10,"left"); txt("token muy reciente",SX+8,SY+28,css("--mut"),9,"left",400); telarana(t); return; }
+  const n=v.length, mx=Math.max(1,...v.map(c=>c.high))*1.1, mn=Math.min(1,...v.map(c=>c.low))*0.9;
+  const X=i=>SX+8+(i+.5)*(SW-16)/n, Y=val=>SY+SH-8-(val-mn)/(mx-mn)*(SH-26);
+  // linea de x1 y marca de los 60 s (entrada simulada: tras la 1.ª vela)
+  ctx.setLineDash([3,3]); ctx.strokeStyle="#3a4260"; ctx.beginPath(); ctx.moveTo(SX+8,Y(1)); ctx.lineTo(SX+SW-8,Y(1)); ctx.stroke();
+  const x60=SX+8+(SW-16)/n;
+  ctx.strokeStyle=css("--warn"); ctx.beginPath(); ctx.moveTo(x60,SY+18); ctx.lineTo(x60,SY+SH-6); ctx.stroke(); ctx.setLineDash([]);
+  const ancho=Math.max(1,Math.min(7,(SW-16)/n-1));
+  v.forEach((c,i)=>{ const x=X(i), col=c.close>=c.open?"#3ddc84":"#ff4d5e";
+    r(x,Y(c.high),1,Math.max(1,Y(c.low)-Y(c.high)),col); const y1=Y(Math.max(c.open,c.close)), y2=Y(Math.min(c.open,c.close)); r(x-ancho/2,y1,ancho,Math.max(1,y2-y1),col); });
+  const ult=v.at(-1).close, max=Math.max(...v.map(c=>c.high));
+  txt(corto(tk.nom,30),SX+8,SY+14,"#eef1f8",10,"left");
+  txt(`x${ult.toFixed(2)} · máx x${max.toFixed(2)}`,SX+SW-8,SY+14,ult>=1?css("--ok"):css("--bad"),10,"right");
+  txt("60 s",x60+3,SY+SH-8,css("--warn"),8,"left",400);
+  telarana(t);
+}
+const ar={nodos:[],hilos:[],i:0,rep:0,prev:0,grad:0};
+function nuevaTelarana(tk){
+  ar.nodos=[]; ar.hilos=[]; ar.i=0; ar.rep=0; ar.prev=0; ar.grad=0;
+  const a=tk.ar; if(!a) return;
+  const cx=SX+SW/2, cy=SY+SH/2+6, N=[{x:cx,y:cy,l:"token",c:"#eef1f8"}];
+  ar.prev=a.previos||0; ar.grad=a.graduados||0;
+  if(a.creador){
+    N.push({x:cx-120,y:cy-28,l:"creador",c:css("--c-riesgo")});
+    for(let k=0;k<Math.min(ar.prev,3);k++) N.push({x:cx-150+k*40,y:cy+30,l:`previo ${k+1}`,c:"#8a90a8"});
+  }
+  const hs=a.duenos.filter(d=>!d.es_creador);
+  ar.rep=hs.filter(d=>d.repetido).length;
+  hs.slice(0,6).forEach((d,k)=>N.push({x:cx+45+(k%2)*95,y:cy-34+Math.floor(k/2)*26,l:d.repetido?"visto en otros":`h${k+1}`,c:d.repetido?css("--bad"):css("--c-tenedores")}));
+  ar.nodos=N; ar.i=1; tejer();
+}
+function padre(k){ return ar.nodos[k].l.startsWith("previo")?1:0; }
+function telarana(t){
+  if(!ar.nodos.length) return;
+  for(const [a,b] of ar.hilos){ ctx.strokeStyle="rgba(255,106,213,.8)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
+  for(let k=0;k<ar.i && k<ar.nodos.length;k++){ const nd=ar.nodos[k]; ctx.fillStyle=nd.c; ctx.beginPath(); ctx.arc(nd.x,nd.y,3,0,7); ctx.fill(); txt(nd.l,nd.x,nd.y-6,nd.c,8,"center",400);
+    const e=nd.brillo?(performance.now()-nd.brillo)/600:1;   // "visto en otros" brilla un momento al ser tocado
+    if(e<1){ ctx.strokeStyle=`rgba(255,77,94,${1-e})`; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(nd.x,nd.y,4+9*e,0,7); ctx.stroke(); } }
+}
+// ================= LA ARAÑA (capa por encima de toda la página) =================
+// Estilo "crawler": cuerpo diminuto y 8 patas largas y finas (2 tramos, cinemática inversa) que se AGARRAN a los
+// textos de la página (títulos, números, etiquetas) y los "leen": cada elemento que pisa se enmarca un momento.
+// Cada pata da su paso POR SU CUENTA (salvo que una vecina esté en el aire). Para tejer, tocar una tarjeta o
+// atender una alarma, la araña se queda a distancia y estira UNA pata hasta el objetivo.
+const acv=document.getElementById("aranaCv"), actx=acv.getContext("2d");
+function ajustarA(){ const d=window.devicePixelRatio||1; acv.width=innerWidth*d; acv.height=innerHeight*d; actx.setTransform(d,0,0,d,0,0); }
+addEventListener("resize",ajustarA); ajustarA();
+const L1=56, L2=62, ALC=L1+L2-4;                                                     // patas largas: alcance ~114 px
+const CAD=[30,70,110,150].map(g=>g*Math.PI/180);                                      // caderas, de delante a atrás
+const REP=[[92,35],[84,76],[84,110],[92,148]].map(([r,g])=>({r,a:g*Math.PI/180}));    // sitio ideal del pie
+const RB=4.5, AZ="rgba(130,180,255,.92)", AZ_T="130,180,255", MAL=css("--bad")||"#ff4d5e";
+const sp={x:innerWidth*0.5,y:scrollY+innerHeight*0.35,ang:0,vel:0,obj:null,pausa:0,tareas:[],patas:[],motivo:"patrulla",estira:null,escaneo:null};
+for(let k=0;k<8;k++) sp.patas.push({k,lado:k<4?-1:1,i:k%4,ag:PATA_AG[k],pie:null,paso:null,alto:0,mala:false,umbral:rnd(26,44)});
+const mez=(a,b,s)=>({x:a.x+(b.x-a.x)*s,y:a.y+(b.y-a.y)*s});
+const suave=e=>e*e*(3-2*e);
+function cadera(pt){ const a=sp.ang+pt.lado*CAD[pt.i]; return {x:sp.x+Math.cos(a)*RB,y:sp.y+Math.sin(a)*RB}; }
+function reposo(pt,adel){ const r=REP[pt.i], a=sp.ang+pt.lado*r.a;
+  return {x:sp.x+Math.cos(a)*r.r+Math.cos(sp.ang)*adel, y:sp.y+Math.sin(a)*r.r+Math.sin(sp.ang)*adel}; }
+function aDoc(el){ const b=el.getBoundingClientRect(); return {x:b.left+scrollX,y:b.top+scrollY,w:b.width,h:b.height}; }
+function nodoDoc(nd){ const b=aDoc(cv); return {x:b.x+nd.x*b.w/W, y:b.y+nd.y*b.h/H}; }
+function borde(c,p){   // punto del borde del rectángulo c más cercano a p
+  const x=Math.max(c.x,Math.min(c.x+c.w,p.x)), y=Math.max(c.y,Math.min(c.y+c.h,p.y));
+  if(x!==p.x||y!==p.y) return {x,y};
+  const dl=p.x-c.x, dr=c.x+c.w-p.x, dt=p.y-c.y, db=c.y+c.h-p.y, m=Math.min(dl,dr,dt,db);
+  return m===dl?{x:c.x,y:p.y}:m===dr?{x:c.x+c.w,y:p.y}:m===dt?{x:p.x,y:c.y}:{x:p.x,y:c.y+c.h};
+}
+const dentro=(c,p)=>({x:Math.max(c.x+2,Math.min(c.x+c.w-2,p.x)), y:Math.max(c.y+2,Math.min(c.y+c.h-2,p.y))});
+// "anclas": los textos visibles de la página (hojas con texto). Se recalculan como mucho cada segundo.
+let anclas=[], anclasT=-1e9;
+function recalcAnclas(ahora){
+  anclas=[...document.querySelectorAll("header *, .t *, .p h3, .p h3 *")]
+    .filter(e=>e.children.length===0 && e.textContent.trim() && e.offsetWidth>0).map(aDoc).filter(c=>c.w>4&&c.h>4);
+  anclasT=ahora;
+}
+const limX=x=>Math.max(scrollX+70,Math.min(scrollX+innerWidth-70,x)), limY=y=>Math.max(scrollY+70,Math.min(scrollY+innerHeight-70,y));
+const marcos=[];    // elementos "leídos": marco que se desvanece
+function marcar(c,ahora){ if(!marcos.some(m=>m.c===c&&ahora-m.t0<400)) marcos.push({c,t0:ahora}); if(marcos.length>24) marcos.shift(); }
+const destellos=[];
+function destello(p,ahora){ destellos.push({x:p.x,y:p.y,t0:ahora}); if(destellos.length>16) destellos.shift(); }
+const enAire=q=>!!q.paso||(sp.estira&&sp.estira.pt===q);
+const vecinas=pt=>sp.patas.filter(q=>q!==pt&&((q.lado===pt.lado&&Math.abs(q.i-pt.i)===1)||(q.lado!==pt.lado&&q.i===pt.i)));
+// avisos: la araña va a donde pasa algo
+const avisos=[];
+function avisarArana(el,tipo){ if(el && !avisos.some(a=>a.el===el)) avisos.push({el,tipo}); }
+function tejer(){ sp.tareas=ar.nodos.map((nd,k)=>({nodo:k,nd})).slice(1); sp.obj=null; sp.pausa=0; sp.estira=null; sp.motivo="tejer"; }
+function siguiente(){
+  const a=avisos.shift();
+  if(a){ sp.motivo="alarma"; return {alarma:a.el}; }
+  sp.motivo="patrulla";   // como un crawler: salta a otro texto visible, mejor si está cerca (sigue "enlaces")
+  const vis=anclas.filter(c=>c.y>scrollY+70 && c.y<scrollY+innerHeight-70 && c.x>scrollX+70 && c.x<scrollX+innerWidth-70);
+  if(!vis.length) return {x:innerWidth/2+scrollX, y:innerHeight/2+scrollY};
+  const cerca=vis.filter(c=>{ const d=Math.hypot(c.x-sp.x,c.y-sp.y); return d>80 && d<320; });
+  const c=pick(cerca.length?cerca:vis);
+  return {x:limX(c.x+c.w/2),y:limY(c.y+c.h/2+rnd(-14,14))};
+}
+function puntoDe(t){
+  if(t.nodo!==undefined) return ar.nodos[t.nodo]===t.nd ? nodoDoc(t.nd) : null;   // la telaraña cambió: se descarta
+  if(t.alarma) return borde(aDoc(t.alarma),{x:sp.x,y:sp.y});
+  return t;
+}
+function mejorPata(p){   // pata sana y en el suelo cuya cadera está más cerca de p
+  let pt=null, d=1e9;
+  for(const q of sp.patas){ if(q.mala||q.paso) continue; const h=cadera(q), dd=Math.hypot(p.x-h.x,p.y-h.y); if(dd<d){d=dd;pt=q;} }
+  return {pt,d};
+}
+function estirar(pt,p,alTocar,quieto,tap){ sp.estira={pt,p:{...p},t0:performance.now(),de:{...pt.pie},alTocar,quieto,tap,hecho:false}; sp.vel=0; }
+function alTocar(t,pt){
+  const ahora=performance.now();
+  if(t.nodo!==undefined){ const k=t.nodo; if(ar.nodos[k]!==t.nd) return;
+    ar.hilos.push([ar.nodos[padre(k)],ar.nodos[k]]); ar.i=Math.max(ar.i,k+1);
+    if(t.nd.l==="visto en otros") t.nd.brillo=ahora;
+    if(!sp.tareas.some(x=>x.nodo!==undefined)) bocadillo(SX+SW/2,SY+SH+20,ar.rep?`araña: ${ar.rep} monederos ya vistos en otros tokens`:`araña: creador ${ar.prev} previos · ${ar.grad} graduados`,css("--c-arana"));
+  } else if(t.alarma) sp.escaneo={el:t.alarma,pt,fin:ahora+1500};
+}
+function andarHacia(o,dt,cojera,vmax){   // gira hacia o y avanza; true al llegar
+  const vx=o.x-sp.x, vy=o.y-sp.y, d=Math.hypot(vx,vy);
+  let da=Math.atan2(vy,vx)-sp.ang; while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
+  sp.ang += Math.max(-1,Math.min(1,da*2))*dt*0.007;
+  const obj = vmax*Math.max(0.1,Math.cos(da))*Math.min(1,d/60+0.2)*cojera;
+  sp.vel += (obj-sp.vel)*0.12;
+  sp.x += Math.cos(sp.ang)*sp.vel*dt; sp.y += Math.sin(sp.ang)*sp.vel*dt;
+  if(sp.motivo==="patrulla"){ sp.x=limX(sp.x); sp.y=limY(sp.y); }
+  return d<8;
+}
+// dónde pisa un pie: el texto al alcance más cercano a su sitio ideal (si lo hay a < 50 px); si no, el sitio ideal
+function apoyo(pt,ideal){
+  const h=cadera(pt); let mejor=null, dm=50;
+  for(const c of anclas){ const p=dentro(c,ideal), d=Math.hypot(p.x-ideal.x,p.y-ideal.y);
+    if(d<dm && Math.hypot(p.x-h.x,p.y-h.y)<ALC*0.96){ dm=d; mejor={p,c}; } }
+  return mejor || {p:ideal,c:null};
+}
+function pasoArana(dt,ahora){
+  if(ahora-anclasT>1000) recalcAnclas(ahora);
+  // cada pata es un agente: si no está "ok" se queda rígida (roja) y la araña cojea
+  let malas=0;
+  for(const pt of sp.patas){ const e=estadoPata(pt.ag), m=e!=="ok";
+    if(m && !pt.mala){ pt.paso=null; pt.alto=0; if(sp.estira&&sp.estira.pt===pt) sp.estira=null; bocadillo(SX+SW/2,SY+SH+20+pt.k*16,`pata ${pt.ag}: ${e}`,MAL); }
+    pt.mala=m; if(m) malas++; }
+  const cojera = malas>=2?0.4:malas===1?0.6:1;
+  // ---- cuerpo y tareas ----
+  if(sp.estira){ sp.vel=0; }
+  else if(sp.pausa>0){ sp.pausa-=dt; sp.vel*=0.85; }
+  else {
+    if(!sp.obj) sp.obj = sp.tareas.shift() || siguiente();
+    const t=sp.obj, p=puntoDe(t);
+    if(!p) sp.obj=null;
+    else if(t.nodo!==undefined || t.alarma){
+      const {pt,d}=mejorPata(p);
+      if(pt && d<ALC*0.9){ estirar(pt,p,()=>alTocar(t,pt),t.alarma?1500:220,false); sp.obj=null; }   // al alcance: estira UNA pata
+      else { const ux=sp.x-p.x, uy=sp.y-p.y, n=Math.hypot(ux,uy)||1;                                   // si no: se acerca, sin ponerse encima
+             andarHacia({x:p.x+ux/n*ALC*0.7, y:p.y+uy/n*ALC*0.7},dt,cojera,0.2); }
+    } else if(andarHacia(t,dt,cojera,0.15)){ sp.pausa=rnd(120,450); sp.obj=null; }
+  }
+  // ---- toque: la pata de un agente toca SU tarjeta cuando llega su latido (solo patrullando y si está al alcance) ----
+  for(const ag in toques){
+    if(ahora-toques[ag]>2500){ delete toques[ag]; continue; }
+    if(sp.estira || sp.motivo!=="patrulla") break;
+    const pt=sp.patas.find(q=>q.ag===ag); if(!pt||pt.mala){ delete toques[ag]; continue; }
+    if(pt.paso) continue;
+    const el=ag==="panel"?document.querySelector(".sala"):(tarj[ag]&&tarj[ag].t); delete toques[ag]; if(!el) continue;
+    const h=cadera(pt), c=aDoc(el), b=borde(c,h);
+    if(Math.hypot(b.x-h.x,b.y-h.y)<ALC*0.95){ estirar(pt,b,()=>marcar(c,performance.now()),260,true); break; }
+  }
+  // ---- la pata que se estira: va, se queda (o da toquecitos) y vuelve a su sitio ----
+  if(sp.estira){ const E=sp.estira, pt=E.pt, t=ahora-E.t0, IR=170, VOL=170;
+    if(t<IR){ const s=suave(t/IR); pt.pie=mez(E.de,E.p,s); pt.alto=Math.sin(Math.PI*s)*14; }
+    else if(t<IR+E.quieto){ pt.pie={...E.p}; pt.alto=E.tap?Math.max(0,Math.sin((t-IR)/E.quieto*2*Math.PI))*6:0;
+      if(!E.hecho){ E.hecho=true; destello(E.p,ahora); if(E.alTocar) E.alTocar(); } }
+    else if(t<IR+E.quieto+VOL){ const s=suave((t-IR-E.quieto)/VOL), a=apoyo(pt,reposo(pt,0)); pt.pie=mez(E.p,a.p,s); pt.alto=Math.sin(Math.PI*s)*10; }
+    else { pt.alto=0; sp.estira=null; }
+  }
+  // ---- patas que andan: cada una por su cuenta; al posarse sobre un texto, lo "lee" ----
+  const adel=Math.min(30,sp.vel*160);
+  let aire=sp.patas.filter(enAire).length;
+  for(const pt of sp.patas){
+    if(sp.estira && sp.estira.pt===pt) continue;
+    const meta=reposo(pt,adel);
+    if(!pt.pie){ const a=apoyo(pt,meta); pt.pie={...a.p}; continue; }
+    if(pt.mala) pt.alto=0;                                               // rígida: no da pasos, el pie se arrastra
+    else if(pt.paso){ const P=pt.paso, e=Math.min(1,(ahora-P.t0)/P.dur);
+      pt.pie=mez(P.de,P.a,suave(e)); pt.alto=Math.sin(Math.PI*e)*12;
+      if(e>=1){ pt.paso=null; pt.alto=0; pt.umbral=rnd(26,44); if(P.c) marcar(P.c,ahora); } }
+    else { const lejos=Math.hypot(meta.x-pt.pie.x,meta.y-pt.pie.y);
+      const libre=aire<3 && !vecinas(pt).some(enAire);
+      if((lejos>pt.umbral && libre) || lejos>pt.umbral*2){              // el destino se fija al despegar
+        const a=apoyo(pt,meta); pt.paso={de:{...pt.pie},a:a.p,c:a.c,t0:ahora,dur:rnd(110,170)}; aire++; }
+      else if(sp.vel<0.02 && libre && Math.random()<dt/1800){          // parada: de vez en cuando una pata tantea otro texto
+        const ideal={x:meta.x+rnd(-25,25),y:meta.y+rnd(-25,25)}, a=apoyo(pt,ideal);
+        pt.paso={de:{...pt.pie},a:a.p,c:a.c,t0:ahora,dur:rnd(120,180)}; aire++; } }
+    const h=cadera(pt), dx=pt.pie.x-h.x, dy=pt.pie.y-h.y, dd=Math.hypot(dx,dy);   // nunca más lejos que el alcance
+    if(dd>ALC){ pt.pie={x:h.x+dx*ALC/dd, y:h.y+dy*ALC/dd}; }
+  }
+}
+function dibujarArana(ahora){
+  actx.clearRect(0,0,innerWidth,innerHeight);
+  const ox=-scrollX, oy=-scrollY;
+  for(let k=marcos.length-1;k>=0;k--){ const m=marcos[k], e=(ahora-m.t0)/1400;   // marco del texto "leído"
+    if(e>=1){ marcos.splice(k,1); continue; }
+    const a=(1-e), c=m.c;
+    actx.fillStyle=`rgba(${AZ_T},${0.10*a})`; actx.fillRect(c.x+ox-2,c.y+oy-1,c.w+4,c.h+2);
+    actx.strokeStyle=`rgba(${AZ_T},${0.85*a})`; actx.lineWidth=1; actx.strokeRect(c.x+ox-2.5,c.y+oy-1.5,c.w+5,c.h+3); }
+  for(let k=destellos.length-1;k>=0;k--){ const f=destellos[k], e=(ahora-f.t0)/300;
+    if(e>=1){ destellos.splice(k,1); continue; }
+    actx.strokeStyle=`rgba(${AZ_T},${0.9*(1-e)})`; actx.lineWidth=1.2; actx.beginPath(); actx.arc(f.x+ox,f.y+oy,2+9*e,0,7); actx.stroke(); }
+  if(sp.escaneo){ if(ahora>sp.escaneo.fin) sp.escaneo=null;
+    else { const b=sp.escaneo.el.getBoundingClientRect(), f=sp.escaneo.pt.pie, fx=f.x+ox, fy=f.y+oy, yb=b.top+((ahora/6)%b.height);
+      actx.fillStyle=`rgba(${AZ_T},.07)`; actx.beginPath(); actx.moveTo(fx,fy); actx.lineTo(b.left,yb); actx.lineTo(b.right,yb); actx.closePath(); actx.fill();
+      actx.strokeStyle=`rgba(${AZ_T},.6)`; actx.lineWidth=1; actx.beginPath(); actx.moveTo(b.left,yb); actx.lineTo(b.right,yb); actx.stroke(); } }
+  actx.lineCap="round"; actx.lineJoin="round";
+  const cx=sp.x+ox, cy=sp.y+oy, rod=[];
+  for(const pt of sp.patas){
+    const h0=cadera(pt), h={x:h0.x+ox,y:h0.y+oy}, f={x:pt.pie.x+ox, y:pt.pie.y+oy-(pt.alto||0)};
+    const dx=f.x-h.x, dy=f.y-h.y, d=Math.max(1,Math.hypot(dx,dy)), dd=Math.min(d,L1+L2-1);
+    const a=Math.atan2(dy,dx), b=Math.acos(Math.max(-1,Math.min(1,(L1*L1+dd*dd-L2*L2)/(2*L1*dd))));
+    const c1={x:h.x+Math.cos(a+b)*L1,y:h.y+Math.sin(a+b)*L1}, c2={x:h.x+Math.cos(a-b)*L1,y:h.y+Math.sin(a-b)*L1};
+    const k=Math.hypot(c1.x-cx,c1.y-cy)>Math.hypot(c2.x-cx,c2.y-cy)?c1:c2;   // rodilla hacia fuera
+    actx.strokeStyle=pt.mala?MAL:AZ; actx.lineWidth=1.3; actx.beginPath(); actx.moveTo(h.x,h.y); actx.lineTo(k.x,k.y); actx.lineTo(f.x,f.y); actx.stroke();
+    rod.push({k,f,mala:pt.mala});
+  }
+  for(const r of rod){ actx.fillStyle=r.mala?MAL:"#dfe9ff"; actx.beginPath(); actx.arc(r.k.x,r.k.y,1.8,0,7); actx.fill();
+    actx.fillStyle=r.mala?MAL:AZ; actx.beginPath(); actx.arc(r.f.x,r.f.y,2.2,0,7); actx.fill(); }
+  actx.fillStyle="#dfe9ff"; actx.beginPath(); actx.arc(cx,cy,RB,0,7); actx.fill();          // cuerpo diminuto
+  actx.strokeStyle=AZ; actx.lineWidth=1.2; actx.beginPath(); actx.arc(cx,cy,RB+3,0,7); actx.stroke();
+}
+let antA=performance.now();
+function bucleArana(t){ const dt=Math.min(40,t-antA); antA=t; pasoArana(dt,t); dibujarArana(t); requestAnimationFrame(bucleArana); }
+requestAnimationFrame(bucleArana);
+function planta(x,y,t){ // columna de luz
+  r(x-3,y-100,6,100,"#0b0f1a"); const a=.35+.25*Math.sin(t/700+x);
+  ctx.fillStyle=`rgba(77,163,255,${a})`; ctx.fillRect(x-1,y-96,2,92); r(x-6,y-2,12,3,"#1a2238");}
+function mesa(x,y,w=96){ // consola
+  r(x-w/2,y,w,9,"#121827"); r(x-w/2,y,w,1,"rgba(120,180,255,.55)"); r(x-w/2+6,y+3,w-12,1,"rgba(120,180,255,.12)");
+  r(x-w/2+8,y+9,w-16,24,"#0b0f1a"); r(x-w/2+8,y+32,w-16,1,"rgba(77,163,255,.25)");}
+function monitor(x,y,c,fn){r(x-15,y-22,30,19,"#03050a"); ctx.strokeStyle="rgba(120,180,255,.45)"; ctx.lineWidth=1; ctx.strokeRect(x-14.5,y-21.5,29,18); r(x-12,y-19,24,13,c); r(x-1,y-3,2,3,"#1a2238"); if(fn) fn(x-12,y-19);}
+function luz(x,y,mal,t){ if(!mal) return; if(Math.floor(t/300)%2) {ctx.fillStyle="rgba(255,77,94,.35)";ctx.beginPath();ctx.arc(x,y,16,0,7);ctx.fill();} r(x-3,y-3,6,6,css("--bad")); }
+
+function bicho(x,y,col,t,opc={}){ // dron-terminal
+  if(opc.vacio){ ctx.setLineDash([2,3]); ctx.strokeStyle="rgba(255,77,94,.7)"; ctx.strokeRect(x-12.5,y-26.5,25,20); ctx.setLineDash([]); txt("OFFLINE",x,y-32,css("--bad"),9); return; }
+  const flot=Math.sin(t/500+x)*1.8, yy=y-14+flot;
+  // halo bajo el dron
+  ctx.fillStyle=col; ctx.globalAlpha=.12; ctx.beginPath(); ctx.ellipse(x,y-2,13,3,0,0,7); ctx.fill(); ctx.globalAlpha=1;
+  // casco hexagonal
+  ctx.fillStyle="#141a28"; ctx.strokeStyle=col; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(x-12,yy-4); ctx.lineTo(x-7,yy-12); ctx.lineTo(x+7,yy-12); ctx.lineTo(x+12,yy-4); ctx.lineTo(x+8,yy+5); ctx.lineTo(x-8,yy+5); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // visor que escanea
+  r(x-9,yy-6,18,4,"#05070c");
+  if(opc.duerme){ r(x-8,yy-5,16,2,"rgba(125,132,153,.35)"); txt("standby",x+16,yy-14,css("--mut"),8,"left",400); }
+  else { const sx=x-8+((Math.sin(t/380+x)+1)/2)*12; r(x-8,yy-5,16,2,"rgba(255,255,255,.08)"); ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=6; ctx.fillRect(sx,yy-5,4,2); ctx.shadowBlur=0; }
+  // antena y luz de estado
+  r(x+5,yy-17,1,5,"#3a4560"); r(x+4,yy-19,3,2,(Math.floor(t/600)%2)?col:"#1a2238");
+  if(opc.acc) opc.acc(x,yy);
+}
+function gl(c){ctx.strokeStyle=c;ctx.lineWidth=1;}
+const accesorios = { // símbolo técnico de cada función, en el pecho del dron
+  rastreador:(x,y)=>{gl(css("--c-rastreador"));ctx.beginPath();ctx.arc(x,y+1,3,Math.PI,2*Math.PI);ctx.stroke();},
+  riesgo:(x,y)=>{gl(css("--c-riesgo"));ctx.beginPath();ctx.moveTo(x-3,y-1);ctx.lineTo(x+3,y-1);ctx.lineTo(x+3,y+1);ctx.lineTo(x,y+4);ctx.lineTo(x-3,y+1);ctx.closePath();ctx.stroke();},
+  analista:(x,y)=>{ctx.fillStyle=css("--c-v1");for(const [a,b] of [[-3,0],[0,3],[3,0]]) ctx.fillRect(x+a-1,y+b-1,2,2);},
+  analista_v2:(x,y)=>{ctx.fillStyle=css("--c-v2");for(const [a,b] of [[-3,0],[0,3],[3,0],[0,-1]]) ctx.fillRect(x+a-1,y+b-1,2,2);},
+  tenedores:(x,y)=>{gl(css("--c-tenedores"));ctx.beginPath();ctx.arc(x,y+3,4,Math.PI*1.2,Math.PI*1.8);ctx.stroke();},
+  archivista:(x,y)=>{ctx.fillStyle=css("--c-archivista");for(let k=0;k<3;k++) ctx.fillRect(x-3,y-1+k*2,6,1);},
+  vigilante:(x,y)=>{ctx.fillStyle=css("--bad");ctx.globalAlpha=.5+.5*Math.sin(performance.now()/300);ctx.fillRect(x-1,y-1,3,3);ctx.globalAlpha=1;},
+};
+
+// ---------------- paquetes, rayos y bocadillos ----------------
+function bocadillo(x,y,s,c){for(let i=bocadillos.length-1;i>=0;i--) if(bocadillos[i].x===x&&bocadillos[i].y===y) bocadillos.splice(i,1); bocadillos.push({x,y,s,c,t0:performance.now()});}
+function rayo(a,b,c){rayos.push({a,b,c,t0:performance.now()});}
+const MAX_PAPELES = 12;  // si llegan muchos de golpe, los demás no se animan (el recuento sí cuenta)
+function mover(p,dt){
+  const vx=p.dx-p.x, vy=p.dy-p.y, d=Math.hypot(vx,vy), v=dt*0.28;
+  if(d<=v){p.x=p.dx;p.y=p.dy;return true;} p.x+=vx/d*v; p.y+=vy/d*v; return false;
+}
+function pasoPapeles(dt,ahora){
+  for(let i=papeles.length-1;i>=0;i--){
+    const p=papeles[i];
+    if(p.espera && ahora<p.espera) continue;
+    if(!mover(p,dt)) continue;
+    if(p.fase==="a_riesgo"){
+      p.espera=ahora+350;
+      if(p.tk.pasa){ bocadillo(P.riesgo.x,P.riesgo.y-44,"PASA",css("--ok")); p.fase="a_pend"; p.dx=P.pend.x; p.dy=P.pend.y-8; }
+      else { bocadillo(P.riesgo.x,P.riesgo.y-44,"DESCARTE: "+corto(p.tk.motivos[0]||"sin motivo",22),css("--bad")); p.fase="a_papelera"; p.dx=P.papelera.x; p.dy=P.papelera.y-6; }
+    } else if(p.fase==="a_papelera"){ papeles.splice(i,1); }
+    else if(p.fase==="a_pend"){ p.tk.llego=true; papeles.splice(i,1); revisarLeidos(true); }
+    else if(p.fase==="a_leidos"){ papeles.splice(i,1); }
+    else if(p.fase==="a_arch"){ pilaArch++; papeles.splice(i,1); }
+  }
+}
+// con v1, v2 y tenedores hechos, el token pasa de PENDIENTES a LEÍDOS
+function revisarLeidos(anim){
+  for(const tk of toks.values()){
+    if(tk.llego && !tk.leido && tk.v1 && tk.v2 && tk.ten){
+      tk.leido=true; leidosL.push(tk);
+      if(anim && papeles.length<MAX_PAPELES) papeles.push({tk,x:P.pend.x,y:P.pend.y-8,dx:P.leidos.x,dy:P.leidos.y-8,fase:"a_leidos"});
+    }
+  }
+  nPend=[...toks.values()].filter(k=>k.llego&&!k.leido).length;
+}
+
+// ---------------- lectura de /datos_sala ----------------
+function procesar(d){
+  D=d; if(d.umbrales) LAT_MAX=d.umbrales.LATIDO_MAX_S||LAT_MAX;
+  for(const a of d.agentes){ L[a.agente]=a;
+    est[a.agente]=!a.alarma?"ok":(a.edad_s===null?"sin_latido":a.estado!=="ok"?a.estado:"latido_viejo");
+    if(a.edad_s!==null){ const ts=d.ahora-a.edad_s;   // /datos_sala no trae el ts: latido nuevo = ts distinto
+      if(lat[a.agente]!==undefined && Math.abs(ts-lat[a.agente])>1e-3) toques[a.agente]=performance.now();
+      lat[a.agente]=ts; } }
+  toques.panel=performance.now();                      // la pata "panel" toca cada vez que llega /datos_sala
+  // fotos/min: diferencia entre lecturas de max(rowid) de fotos
+  // ventana deslizante de ~70 s: el rastreador escribe a golpes cada 10 s, una sola diferencia de 5 s sale doblada
+  muestras.push({t:d.ahora,r:d.fotos_max_rowid});
+  while(muestras.length && muestras[0].t<d.ahora-70) muestras.shift();
+  const m0=muestras[0], dt=d.ahora-m0.t;
+  if(dt>=30 && d.fotos_max_rowid>=m0.r){
+    fotosMin=(d.fotos_max_rowid-m0.r)/dt*60; fotosMax=Math.max(fotosMax,fotosMin); fhist.push({t:d.ahora,f:fotosMin}); }
+  else fotosMin=null;
+  while(fhist.length && fhist[0].t<d.ahora-3600) fhist.shift();
+  // decisiones nuevas (la lista llega de más nueva a más vieja)
+  dec10=d.decisiones.length; pasan10=d.decisiones.filter(x=>x.pasa===1).length; descartes10=dec10-pasan10;
+  for(const x of [...d.decisiones].reverse()){
+    if(visto.dec.has(x.mint)) continue;
+    visto.dec.add(x.mint);
+    const tk={mint:x.mint,nom:x.nombre,ts:x.ts,pasa:x.pasa===1,motivos:x.motivos||[],llego:primera,leido:false,v1:null,v2:null,ten:null};
+    if(tk.pasa) toks.set(x.mint,tk);
+    if(!primera){
+      if(papeles.length<MAX_PAPELES) papeles.push({tk,x:P.rastreador.x+30,y:P.rastreador.y-6,dx:P.riesgo.x-30,dy:P.riesgo.y-6,fase:"a_riesgo"});
+      else tk.llego=true;
+    }
+  }
+  // análisis y tenedores: rayo + bocadillo para los mints nuevos; el token que pasa guarda su resultado
+  const lotes=[["v1",d.analisis_v1,"analista","--c-v1",x=>`v1 · ${x.puntuacion===null?"sin dato":x.puntuacion+"/10 "+(x.etiqueta||"")}`],
+               ["v2",d.analisis_v2,"analista_v2","--c-v2",x=>`v2 · ${x.puntuacion===null?"sin dato":x.puntuacion+"/10 "+(x.etiqueta||"")}${x.meta_ok===1?"":" · sin meta"}`],
+               ["ten",d.tenedores,"tenedores","--c-tenedores",x=>x.error?"tenedores · error":`top10 ${fmt(x.top10_pct,0)}% · creador ${fmt(x.creador_pct,1)}%`]];
+  for(const [campo,lista,ag,col,texto] of lotes){
+    for(const x of [...lista].reverse()){
+      const tk=toks.get(x.mint); if(tk) tk[campo]=x;
+      if(visto[campo].has(x.mint)) continue;
+      visto[campo].add(x.mint);
+      if(primera) continue;
+      rayo(P.pend,P[ag],css(col));
+      bocadillo(P[ag].x,P[ag].y-44,(x.nombre?corto(x.nombre,12)+" · ":"")+texto(x),css(col));
+    }
+  }
+  // resumen nuevo → el archivista lo recoge de LEÍDOS
+  for(const x of [...d.resumen].reverse()){
+    if(visto.res.has(x.mint)) continue;
+    visto.res.add(x.mint);
+    if(primera) continue;
+    if(papeles.length<MAX_PAPELES) papeles.push({tk:{},x:P.leidos.x,y:P.leidos.y-8,dx:P.archivista.x-30,dy:P.archivista.y-10,fase:"a_arch"});
+    leidosL.shift();
+    rayo(P.leidos,P.archivista,css("--c-archivista"));
+    bocadillo(P.archivista.x,P.archivista.y-48,x.graduado===1?"¡GRADUADO!":x.error?"resumen (error)":"resumen",css("--c-archivista"));
+  }
+  // poda: tokens de más de 45 min
+  for(const [m,tk] of toks) if(tk.ts<d.ahora-2700) toks.delete(m);
+  while(leidosL.length && leidosL[0].ts<d.ahora-2700) leidosL.shift();
+  revisarLeidos(!primera);
+  // último token que pasa: solo se piden velas y araña cuando cambia
+  let nuevo=null; for(const tk of toks.values()) if(!nuevo||tk.ts>nuevo.ts) nuevo=tk;
+  if(nuevo && (!ultimo||ultimo.mint!==nuevo.mint)){ ultimo=nuevo; ar.nodos=[]; ar.hilos=[]; pedirToken(nuevo.mint); }
+  primera=false;
+  pintarUltimo(); pintarUmbrales();
+}
+async function pedirToken(mint){
+  try{
+    const resp=await fetch("/datos_token?mint="+encodeURIComponent(mint),{cache:"no-store"});
+    if(!resp.ok) return;
+    const j=await resp.json();
+    if(!ultimo||ultimo.mint!==mint) return;   // mientras tanto pasó otro token
+    ultimo.velas=j.velas; ultimo.ar=j.arana; nuevaTelarana(ultimo); pintarUltimo();
+  }catch(e){}
+}
+async function leer(){
+  const aviso=document.getElementById("aviso");
+  try{
+    const resp=await fetch("/datos_sala",{cache:"no-store"});
+    const d=await resp.json();
+    if(!resp.ok) throw new Error(d.error||resp.status);
+    aviso.style.display="none"; procesar(d);
+  }catch(e){ aviso.style.display="block"; }
+}
+
+function bandeja(p,n,et,c){
+  mesa(p.x,p.y,70);
+  for(let i=0;i<Math.min(n,14);i++){ r(p.x-10,p.y-5-i*3,20,2,c); r(p.x-10,p.y-5-i*3,20,1,"rgba(255,255,255,.35)"); }
+  txt(`${et} ${n}`,p.x,p.y+52,n>12?css("--bad"):c,10);
+}
+
+function dibujar(t){
+  suelo(t);
+  // rayos de comunicación
+  for(let i=rayos.length-1;i>=0;i--){const R=rayos[i], e=(t-R.t0)/700; if(e>1){rayos.splice(i,1);continue;}
+    ctx.strokeStyle=R.c; ctx.globalAlpha=1-e; ctx.setLineDash([4,4]); ctx.lineDashOffset=-t/30; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(R.a.x,R.a.y-10); ctx.lineTo(R.b.x,R.b.y-20); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;}
+  // rastreador
+  const rasMal = est.rastreador!=="ok";
+  mesa(P.rastreador.x,P.rastreador.y,110);
+  for(const dx of [-32,0,32]) monitor(P.rastreador.x+dx,P.rastreador.y,rasMal?"#3a0d14":"#0b1d33",(x,y)=>{ if(!rasMal) for(let k=0;k<4;k++) r(x+2+k*5,y+12-((t/90+k*7+dx)%10),3,((t/90+k*7+dx)%10),css("--c-rastreador")); });
+  bicho(P.rastreador.x,P.rastreador.y-4,css("--c-rastreador"),t,{acc:accesorios.rastreador});
+  luz(P.rastreador.x+50,P.rastreador.y-30,rasMal,t);
+  txt("RASTREADOR",P.rastreador.x,P.rastreador.y+52,css("--c-rastreador"),10);
+  // riesgo
+  mesa(P.riesgo.x,P.riesgo.y,90); monitor(P.riesgo.x+26,P.riesgo.y,"#1a0a10");
+  bicho(P.riesgo.x,P.riesgo.y-4,css("--c-riesgo"),t,{acc:accesorios.riesgo});
+  txt("RIESGO",P.riesgo.x,P.riesgo.y+52,css("--c-riesgo"),10);
+  // papelera / foso
+  ctx.strokeStyle="rgba(255,77,94,.5)"; ctx.strokeRect(P.papelera.x-16.5,P.papelera.y-14.5,33,26); r(P.papelera.x-14,P.papelera.y-12,28,22,"#0a0c14"); r(P.papelera.x-14,P.papelera.y+8,28,2,"rgba(255,77,94,.4)");
+  txt(`descartes (10 min) ${descartes10}`,P.papelera.x,P.papelera.y+26,css("--mut"),9);
+  // bandejas = tablas-buzón
+  bandeja(P.pend,nPend,"PENDIENTES",css("--warn"));
+  bandeja(P.leidos,leidosL.length,"LEÍDOS",css("--ok"));
+  // analistas + servidor Qwen
+  for(const id of ["analista","analista_v2"]){
+    const p=P[id], mal=est[id]!=="ok", col=css(id==="analista"?"--c-v1":"--c-v2");
+    mesa(p.x,p.y,90); monitor(p.x+26,p.y,mal?"#1a1a1a":"#140f22");
+    if(est[id]==="parado") bicho(p.x,p.y-4,col,t,{vacio:true});
+    else bicho(p.x,p.y-4,col,t,{duerme:est[id]==="sin_ollama",acc:accesorios[id]});
+    luz(p.x-46,p.y-26,mal,t);
+    txt(id==="analista"?"ANALISTA v1":"ANALISTA v2",p.x,p.y+52,col,10);
+  }
+  const q=P.qwen, dormido=est.analista==="sin_ollama"||est.analista_v2==="sin_ollama";
+  r(q.x-16,q.y-70,32,96,"#121624"); r(q.x-13,q.y-66,26,88,"#0b0e18");
+  for(let k=0;k<8;k++) r(q.x-9,q.y-60+k*10,18,4,"#1b2133"), r(q.x+5,q.y-59+k*10,3,2,dormido?"#3a3f50":((Math.floor(t/120)+k)%3?css("--ok"):"#1f5a3a"));
+  txt("QWEN 14B",q.x,q.y+44,css("--mut"),9); txt(dormido?"Ollama: sin respuesta":"Ollama local",q.x,q.y+56,dormido?css("--bad"):css("--mut"),8,"center",400);
+  // tenedores con antena
+  const tn=P.tenedores; mesa(tn.x,tn.y,90);
+  ctx.strokeStyle=css("--c-tenedores"); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(tn.x+34,tn.y-14,10,Math.PI*1.1,Math.PI*1.9); ctx.stroke(); r(tn.x+33,tn.y-14,2,14,"#2a3045");
+  if(Math.floor(t/400)%2) { ctx.globalAlpha=.5; ctx.beginPath(); ctx.arc(tn.x+34,tn.y-22,16,Math.PI*1.2,Math.PI*1.8); ctx.stroke(); ctx.globalAlpha=1; }
+  bicho(tn.x,tn.y-4,css("--c-tenedores"),t,{acc:accesorios.tenedores});
+  txt("TENEDORES · Helius",tn.x,tn.y+52,css("--c-tenedores"),10);
+  // archivista con archivadores
+  const ar2=P.archivista; for(let k=0;k<3;k++){ r(ar2.x+14,ar2.y-60+k*24,40,22,"#0d111c"); ctx.strokeStyle="rgba(232,197,71,.45)"; ctx.strokeRect(ar2.x+14.5,ar2.y-59.5+k*24,39,21); r(ar2.x+20,ar2.y-50+k*24,28,1,"rgba(232,197,71,.6)"); }
+  mesa(ar2.x-10,ar2.y,70);
+  for(let i=0;i<Math.min(pilaArch,10);i++) r(ar2.x-30,ar2.y-4-i*2,16,1,css("--c-archivista"));
+  if(est.archivista==="parado") bicho(ar2.x-14,ar2.y-4,css("--c-archivista"),t,{vacio:true}); else bicho(ar2.x-14,ar2.y-4,css("--c-archivista"),t,{acc:accesorios.archivista});
+  luz(ar2.x-50,ar2.y-26,est.archivista!=="ok",t);
+  txt("ARCHIVISTA",ar2.x-10,ar2.y+52,css("--c-archivista"),10);
+  const gr=D?D.resumen.filter(x=>x.graduado===1).length:0, rn=D?D.resumen.length:0;
+  txt(`graduados ${gr} de ${rn} (últimos)`,ar2.x-10,ar2.y+64,css("--mut"),9);
+  // vigilante en la puerta
+  const vg=P.vigilante, hay=Object.values(est).some(v=>v!=="ok");
+  bicho(vg.x+40,vg.y,css("--c-vigilante"),t,{acc:accesorios.vigilante});
+  txt("VIGILANTE",vg.x+40,vg.y+22,css("--mut"),9);
+  if(hay){ const [k,v]=Object.entries(est).find(([k,v])=>v!=="ok"); if(Math.floor(t/400)%2){ ctx.fillStyle="rgba(255,77,94,.08)"; ctx.fillRect(0,0,W,H);} txt(`¡ALARMA! ${k}: ${v}`,14,vg.y-40,css("--bad"),11,"left"); }
+  // papeles en vuelo
+  for(const p of papeles){ const c=p.fase==="a_papelera"?css("--bad"):p.fase==="a_arch"?css("--c-archivista"):"#bfe3ff";
+    ctx.fillStyle=c; ctx.shadowColor=c; ctx.shadowBlur=8; ctx.beginPath(); ctx.moveTo(p.x,p.y-5); ctx.lineTo(p.x+4,p.y); ctx.lineTo(p.x,p.y+5); ctx.lineTo(p.x-4,p.y); ctx.closePath(); ctx.fill(); ctx.shadowBlur=0;
+    if(p.tk.nom && (p.fase==="a_riesgo"||p.fase==="a_pend")) txt(corto(p.tk.nom,14),p.x,p.y-12,"#eef1f8",9,"center",400); }
+  // bocadillos
+  for(let i=bocadillos.length-1;i>=0;i--){const b=bocadillos[i], e=(t-b.t0)/2400; if(e>1){bocadillos.splice(i,1);continue;}
+    ctx.globalAlpha=e<.85?1:(1-e)/.15; ctx.font="700 10px ui-monospace,Consolas,monospace"; const w=ctx.measureText(b.s).width+12;
+    r(b.x-w/2,b.y-14-e*6,w,16,"#05070c"); ctx.strokeStyle=b.c; ctx.lineWidth=1; ctx.strokeRect(b.x-w/2+.5,b.y-13.5-e*6,w-1,15);
+    txt(b.s,b.x,b.y-3-e*6,b.c,10); ctx.globalAlpha=1;}
+}
+
+// ---------------- paneles de abajo ----------------
+const gcv=document.getElementById("graf"), g=gcv.getContext("2d");
+function pintarGraf(){
+  const w=gcv.clientWidth, h=150, d=window.devicePixelRatio||1; gcv.width=w*d; gcv.height=h*d; gcv.style.height=h+"px"; g.setTransform(d,0,0,d,0,0);
+  g.clearRect(0,0,w,h); g.strokeStyle="#1c2030"; for(let i=1;i<4;i++){g.beginPath();g.moveTo(0,i*h/4);g.lineTo(w,i*h/4);g.stroke();}
+  if(!D) return;
+  const base=Math.floor(D.ahora/60)-59, bw=w/60, mxp=Math.max(1,...D.pasan_por_minuto.map(p=>p.n));
+  let total=0;
+  for(const p of D.pasan_por_minuto){ const i=p.minuto/60-base; if(i<0||i>59) continue; total+=p.n;
+    const alto=p.n/mxp*(h-30); g.fillStyle="rgba(255,63,164,.55)"; g.fillRect(i*bw+1,h-alto,bw-2,alto); }
+  // fotos/min: solo desde que se abrió la página (hace falta la diferencia entre dos lecturas)
+  g.strokeStyle=css("--ok"); g.lineWidth=2; g.beginPath();
+  fhist.forEach((p,i)=>{ const x=(p.t-(D.ahora-3600))/3600*w, y=h-12-(p.f/fotosMax)*(h-40); i?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke();
+  g.font="11px ui-monospace,Consolas,monospace"; g.textAlign="right";
+  g.fillStyle=css("--ok"); g.fillText(fotosMin===null?"fotos/min: midiendo…":`${fmt(Math.round(fotosMin))} fotos/min`,w-4,14);
+  g.fillStyle=css("--acc"); g.fillText(`${total} pasan (60 min)`,w-4,28);
+}
+function fila(padre,k,v,cls){const f=document.createElement("div");f.className="fila";const a=document.createElement("span");a.className="k";a.textContent=k;const b=document.createElement("span");b.textContent=v;if(cls)b.className=cls;f.append(a,b);padre.append(f);}
+function pintarUltimo(){
+  const ut=document.getElementById("ut"); ut.replaceChildren(); const tk=ultimo; if(!tk) return;
+  document.getElementById("utNom").textContent=corto(tk.nom,24);
+  fila(ut,"reglas de riesgo","pasa","pass");
+  const sc=x=>x.puntuacion===null?"sin dato":`${x.puntuacion}/10 · ${x.etiqueta||"?"}`;
+  fila(ut,"analista v1",tk.v1?sc(tk.v1):"esperando…",tk.v1?"":"pend");
+  fila(ut,"analista v2",tk.v2?sc(tk.v2)+(tk.v2.meta_ok===1?"":" · sin metadatos"):"esperando…",tk.v2?"":"pend");
+  const te=tk.ten;
+  fila(ut,"tenedores",!te?"esperando…":te.error?"error: "+te.error:`top10 ${fmt(te.top10_pct,0)}% · creador ${fmt(te.creador_pct,1)}%`,
+       !te?"pend":(te.top10_pct>70||te.creador_pct>5)?"fail":"pass");
+  if(tk.ar){
+    fila(ut,"creador",`${tk.ar.previos} previos · ${tk.ar.graduados} graduados antes`);
+    const hs=tk.ar.duenos;
+    fila(ut,"monederos repetidos",`${hs.filter(d=>d.repetido).length} de ${hs.length}`,hs.some(d=>d.repetido)?"fail":"");
+    if(hs.some(d=>d.es_creador)) fila(ut,"creador en top 10","sí","fail");
+  } else fila(ut,"araña","cargando…","pend");
+}
+function pintarUmbrales(){
+  if(!D||!D.umbrales) return;
+  const U=D.umbrales, u=document.getElementById("umb"); u.replaceChildren();
+  const L2=[["FOTO_S",`${U.FOTO_S} s`],["SEGUIMIENTO_S",`${fmt(U.SEGUIMIENTO_S)} s (${U.SEGUIMIENTO_S/60} min)`],["MIN_SOL_CREADOR",`${fmt(U.MIN_SOL_CREADOR,1)} SOL`],
+    ["creador_en_serie",`>= ${U.MAX_TOKENS_CREADOR_24H} en 24 h`],["LATIDO_MAX_S",`${U.LATIDO_MAX_S} s`],
+    ["comisión + ejecución",`${fmt(U.SIM_COMISION*100,2)} % + ${fmt(U.ESTRATEGIA_EJECUCION*100,1)} % por lado`],["tenedores (info)","top10 > 70 % · creador > 5 %"],
+    ["mínimo por mitad",`n >= ${U.REBOTES_MIN_N}`]];
+  for(const [k,v] of L2) fila(u,k,v,v.includes("19:09")?"pend":"");
+}
+
+// ---------------- bucles ----------------
+let ant=performance.now();
+function bucle(t){
+  const dt=Math.min(50,t-ant); ant=t;
+  pasoPapeles(dt,t);
+  dibujar(t);
+  requestAnimationFrame(bucle);
+}
+setInterval(()=>{
+  document.getElementById("reloj").textContent = new Date().toTimeString().slice(0,8);
+  const c=document.getElementById("cinta"); c.replaceChildren();
+  const b=document.createElement("b"); b.textContent=`decisiones 10 min ${dec10}`; c.append(b, ` · pasan ${pasan10} · pendientes ${nPend} · leídos ${leidosL.length} · descartes ${descartes10}`);
+  pintarTarjetas(); pintarGraf();
+},1000);
+ajustar(); pintarTarjetas(); pintarGraf(); requestAnimationFrame(bucle);
+leer(); setInterval(leer,REFRESCO_MS);
+</script>
+</body>
+</html>

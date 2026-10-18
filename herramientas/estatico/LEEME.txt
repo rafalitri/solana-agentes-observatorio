@@ -1,0 +1,3 @@
+three.js r169 (MIT, LICENCIA_three.txt): three.module.min.js y jsm/ (GLTFLoader, BufferGeometryUtils, SkeletonUtils, RoundedBoxGeometry, OrbitControls) del paquete npm three@0.169.0.
+modelos/RobotExpressive.glb: Tomas Laulhe (Quaternius), CC0 1.0, modificado por Don McCurdy (LICENCIA_RobotExpressive.md).
+Solo los sirve el panel local en /estatico/ para la pagina /oficina.

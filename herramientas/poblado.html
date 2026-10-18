@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poblado Goblin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Chivo:wght@400;600&family=Chivo+Mono:wght@400&display=swap">
+<style>
+/* Layout: escena pixel art grande arriba-izquierda, libro del poblado a la derecha; se apila en móvil.
+   Un solo aspecto deliberado: noche en el bosque goblin (no cambia con el tema del visor). */
+:root{
+  --bg:#11150e; --panel:#1a2015; --linea:#2c3523;
+  --fg:#e8e3c6; --suave:#9ba486;
+  --oro:#d4a92a; --goblin:#8db43c;
+  --ok:#8db43c; --aviso:#e0a030; --mal:#d4503f;
+  --f-display:"Pixelify Sans", "Courier New", monospace;
+  --f-cuerpo:"Chivo", system-ui, sans-serif;
+  --f-dato:"Chivo Mono", ui-monospace, monospace;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-cuerpo);font-size:15px;line-height:1.5}
+.envoltura{max-width:1240px;margin:0 auto;padding-block:20px 40px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 20px}
+h1{font-family:var(--f-display);font-weight:600;font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0;color:var(--goblin);letter-spacing:.02em;text-wrap:balance}
+h1 span{color:var(--oro)}
+.nota{color:var(--suave);font-size:13px;margin:0;max-width:64ch}
+.rejilla{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start}
+@media (max-width:900px){.rejilla{grid-template-columns:minmax(0,1fr)}}
+.escena-marco{position:relative;border:2px solid var(--linea);background:#0c1013;min-width:0}
+canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;cursor:crosshair;touch-action:manipulation}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--oro);padding:6px 9px;font-size:12px;line-height:1.45;max-width:230px;font-family:var(--f-dato);z-index:2}
+.tip b{font-family:var(--f-display);font-weight:600;font-size:14px;color:var(--oro);display:block}
+.controles{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-top:2px solid var(--linea);background:var(--panel)}
+.controles .et{font-family:var(--f-display);color:var(--suave);font-size:13px;margin-right:4px}
+button{font:inherit;font-size:13px;color:var(--fg);background:transparent;border:1px solid var(--linea);padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--goblin)}
+button[aria-pressed="true"]{background:var(--goblin);color:#0f140b;border-color:var(--goblin);font-weight:600}
+button:focus-visible{outline:2px solid var(--oro);outline-offset:2px}
+aside{background:var(--panel);border:2px solid var(--linea);display:flex;flex-direction:column;min-width:0}
+aside h2{font-family:var(--f-display);font-weight:600;font-size:18px;margin:0;padding:12px 14px 8px;color:var(--oro)}
+.agentes{list-style:none;margin:0;padding:0 14px 6px;display:flex;flex-direction:column}
+.agentes li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-top:1px solid var(--linea)}
+.agentes .pers{font-weight:600}
+.agentes .tec{grid-column:1;color:var(--suave);font-size:12px;font-family:var(--f-dato)}
+.pill{grid-row:1 / span 2;grid-column:2;align-self:center;font-family:var(--f-dato);font-size:11px;padding:2px 7px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)} .pill.aviso{color:var(--aviso)} .pill.mal{color:var(--mal);background:rgba(212,80,63,.12)} .pill.neutro{color:var(--suave)}
+.cuentas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--linea);border-top:2px solid var(--linea);margin:0}
+.cuentas div{background:var(--panel);padding:9px 14px}
+.cuentas dt{font-size:12px;color:var(--suave)}
+.cuentas dd{margin:0;font-family:var(--f-dato);font-size:20px;font-variant-numeric:tabular-nums}
+.cuentas .oro dd{color:var(--oro)}
+.escs{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.escs[hidden]{display:none}
+.aviso{color:var(--mal);margin:0;font-size:13px;border:1px solid var(--mal);padding:5px 10px;background:rgba(212,80,63,.12)}
+.aviso[hidden]{display:none}
+.recorrido{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0;padding:0;list-style:none;color:var(--suave);font-size:13px}
+.recorrido li::before{content:"";display:inline-block;width:8px;height:8px;margin-right:7px;background:var(--c,var(--goblin));vertical-align:middle}
+</style>
+
+<div class="envoltura">
+  <header>
+    <h1>Poblado <span>Goblin</span></h1>
+    <p class="nota">Datos reales del panel (solo lectura, se piden cada 5 s). Lo que ya existía al abrir la página no se anima. Pasa el ratón por los sacos y los goblins.</p>
+  </header>
+  <p class="aviso" id="aviso" role="status" hidden></p>
+
+  <div class="rejilla">
+    <div class="escena-marco">
+      <canvas id="escena" width="1440" height="810" aria-label="Poblado goblin: un recadero trae cada saco (token) por el camino, el portero lo deja pasar o lo tira al foso, los chamanes lo leen junto al caldero y el acaparador se lo lleva a su cueva."></canvas>
+      <div class="tip" id="tip" hidden></div>
+      <div class="controles" role="group" aria-label="Modo demo">
+        <button type="button" id="b-demo" aria-pressed="false">Modo demo</button>
+        <span class="escs" id="esc" hidden>
+          <span class="et">Simular:</span>
+          <button type="button" id="b-ok" data-esc="ok" aria-pressed="true">Todo en orden</button>
+          <button type="button" id="b-ollama" data-esc="ollama" aria-pressed="false">Ollama no responde</button>
+          <button type="button" id="b-fotos" data-esc="fotos" aria-pressed="false">Sin fotos</button>
+          <button type="button" id="b-arch" data-esc="archivista" aria-pressed="false">Archivista parado</button>
+        </span>
+      </div>
+    </div>
+
+    <aside>
+      <h2>Quién es quién</h2>
+      <ul class="agentes" id="agentes"></ul>
+      <dl class="cuentas">
+        <div><dt>Sacos vistos</dt><dd id="c-vistos">0</dd></div>
+        <div><dt>Al foso</dt><dd id="c-foso">0</dd></div>
+        <div><dt>Pasan la puerta</dt><dd id="c-pasan">0</dd></div>
+        <div><dt>En la cueva</dt><dd id="c-cueva">0</dd></div>
+        <div class="oro"><dt>Oro (graduados)</dt><dd id="c-oro">0</dd></div>
+        <div><dt>Esperando</dt><dd id="c-espera">0</dd></div>
+        <div><dt>Archivados (descartados)</dt><dd id="c-arch">0</dd></div>
+        <div><dt>En cola de salida</dt><dd id="c-cola">0</dd></div>
+      </dl>
+    </aside>
+  </div>
+
+  <ul class="recorrido" aria-label="Recorrido de un token">
+    <li style="--c:#8a6e48">El recadero trae el saco que vio el vigía</li>
+    <li style="--c:#d4503f">Portero: descartado → foso</li>
+    <li style="--c:#8db43c">Pasa → mesa de pendientes → chamán rojo (v1) y azul (v2)</li>
+    <li style="--c:#d4a92a">A los 30 min el acaparador se lo lleva a la cueva (resumen)</li>
+  </ul>
+</div>
+
+<script>
+(function(){
+const W=480,H=270,S=3;
+const cv=document.getElementById('escena');
+const ctx=cv.getContext('2d');
+ctx.setTransform(S,0,0,S,0,0);
+ctx.imageSmoothingEnabled=false;
+const reducido=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function px(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h);}
+function texto(s,x,y,col,tam,alin,peso){
+  ctx.font=(peso||600)+' '+(tam||7)+'px "Pixelify Sans", "Courier New", monospace';
+  ctx.textAlign=alin||'center';ctx.textBaseline='alphabetic';
+  ctx.lineJoin='round';ctx.lineWidth=1.6;ctx.strokeStyle='rgba(8,10,6,.92)';ctx.strokeText(s,x,y);
+  ctx.fillStyle=col;ctx.fillText(s,x,y);
+}
+
+// ---------- sprites ----------
+function norm(rows,w){return rows.map(r=>r.padEnd(w,'.').slice(0,w));}
+// goblin grande, inspirado en la referencia: orejas largas, cejas pesadas, ojos caídos, narizota, colmillos, barriga
+const GRANDE=norm([
+"E......................E",
+"EE....................EE",
+".EE..................EE.",
+".EEE................EEE.",
+"..EEE....GGGGGG....EEE..",
+"...EEE.GGGGGGGGGG.EEE...",
+"....EEGGGGGGGGGGGGEE....",
+".....EGddddGGddddGE.....",
+".....GGlwkGGGGkwlGG.....",
+".....GGGGGGnnGGGGGG.....",
+"......GGGGnNNnGGGG......",
+"......GGGnNNNNnGGG......",
+"......GGGGnNNnGGGG......",
+".......GtmmmmmmtG.......",
+"........GGGGGGGG........",
+".......GGBBBBBBGG.......",
+"......GG.BBBBBB.GG......",
+".....GG.BBBBBBBB.GG.....",
+".....G..BBBoBBBB..G.....",
+"....GG..BBBBBBBB..GG....",
+"........LLLLLLLL........",
+"........LLqLLqLL........",
+"........L.Lq.L.L........",
+".........GG..GG.........",
+".........GG..GG.........",
+"........GGG..GGG........",
+".......GGGG..GGGG......."],24);
+const GRANDE_DUERME=GRANDE.map(r=>r.replace(/[wk]/g,'l'));
+const PASO_A=GRANDE.slice(0,23).concat(norm([".........GG...GG........","........GG....GG........","........GGG...GGG.......",".......GGGG....GGGG....."],24));
+const CHICO=norm([
+"E...........E",
+"EE..GGGGG..EE",
+".EEGGGGGGGEE.",
+"..GGkGGGkGG..",
+"..GGGnNnGGG..",
+"...GGtmtGG...",
+"....GGGGG....",
+"...GBBBBBG...",
+"..G.BBBBB.G..",
+"....LLLLL....",
+"....L.L.L....",
+"....G...G....",
+"....G...G....",
+"...GG...GG..."],13);
+const CHICO_B=CHICO.slice(0,11).concat(norm(["....G....G...","...G.....G...","..GG.....GG.."],13));
+const PAL={G:'#8db43c',E:'#6f9230',d:'#2e2a1a',l:'#79982f',w:'#e9d27a',k:'#3a1c0c',n:'#7c9f33',N:'#a6c84f',t:'#f1ead0',m:'#4f3220',B:'#b8cf6c',o:'#8aa64a',L:'#8a6e48',q:'#b9a27a'};
+function sprite(rows,x,y,pal,flip){
+  const w=rows[0].length;
+  for(let r=0;r<rows.length;r++)for(let c=0;c<w;c++){
+    const ch=rows[r][flip?w-1-c:c];
+    if(ch!=='.'){ctx.fillStyle=pal[ch];ctx.fillRect(Math.round(x)+c,Math.round(y)+r,1,1);}
+  }
+}
+const SACO=norm(["..rr..",".SSSS.","SSSSSS","SSDSSS","SSSSDS","SSSSSS",".SSSS."],6);
+const PAL_SACO={r:'#d9c48a',S:'#9a7446',D:'#6e5030'};
+const MONEDA=norm([".YYYY.","YWYYYY","YWYYYY","YYYYYY","YYYYDY",".YYYY."],6);
+const PAL_MON={Y:'#e8c13a',W:'#fff6c0',D:'#a8801c'};
+function zeta(x,y,c){texto('z',x,y,c,6);texto('z',x+4,y-4,c,5);}
+
+// ---------- decorado fijo ----------
+let semilla=11;function azar(){semilla=(semilla*16807)%2147483647;return semilla/2147483647;}
+const estrellas=[];for(let i=0;i<70;i++)estrellas.push([Math.floor(azar()*W),Math.floor(azar()*120),azar()]);
+const matas=[];for(let i=0;i<90;i++){const y=154+Math.floor(azar()*112);if(y>194&&y<218)continue;matas.push([Math.floor(azar()*W),y]);}
+
+// ---------- estado ----------
+const agentes={
+  rastreador:{pers:'Vigía de la atalaya',tec:'rastreador',estado:'sin_datos'},
+  riesgo:{pers:'Portero de la empalizada',tec:'riesgo · reglas en código',estado:'fijo'},
+  analista:{pers:'Chamán de la pluma roja',tec:'analista v1 · Qwen',estado:'sin_datos'},
+  analista_v2:{pers:'Chamán de la pluma azul',tec:'analista v2 · Qwen + metadatos',estado:'sin_datos'},
+  archivista:{pers:'Acaparador de la cueva',tec:'archivista · tabla resumen',estado:'sin_datos'},
+  vigilante:{pers:'Goblin del cuerno',tec:'vigilante · avisa si algo falla',estado:'calma'}
+};
+const VIGILADOS=['rastreador','analista','analista_v2','archivista'];
+let modo='real',gen=0,alarmaSrv=false,base=false;
+const alarma=()=>modo==='demo'?VIGILADOS.some(k=>agentes[k].estado!=='ok'):alarmaSrv;
+const rojoOk=()=>agentes.analista.estado==='ok';
+const azulOk=()=>agentes.analista_v2.estado==='ok';
+const archOk=()=>agentes.archivista.estado==='ok';
+function aplicarEscenario(e){ // solo modo demo
+  agentes.rastreador.estado = e==='fotos'?'sin_fotos':'ok';
+  agentes.analista.estado = agentes.analista_v2.estado = e==='ollama'?'sin_ollama':'ok';
+  agentes.archivista.estado = e==='archivista'?'parado':'ok';
+  if(e==='archivista')agentes.archivista.latido=0;
+  document.querySelectorAll('[data-esc]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.esc===e)));
+  pintarAgentes();
+}
+
+const NOMBRES=['MOHO','TRASGO','BARRO','CHISPA','ROÑA','GRUÑÓN','PEDRUSCO','SETA','TUÉTANO','LODO','CHATARRA','MUGRE','COSTRA','RAÍZ','HOLLÍN','VERRUGA','CARROÑA','GUIJARRO','PIOJO','TIZNE'];
+const MOTIVOS=['creador_en_serie','copia','compra_creador_baja','creador_en_serie + compra_creador_baja','copia + compra_creador_baja','mayhem'];
+const cuenta={vistos:0,foso:0,pasan:0,cueva:0,oro:0,arch:0};
+
+// lugares (coordenadas lógicas 480x270)
+const SUELO=206;               // pies de quien camina por el camino
+const PUERTA=104;              // donde se para el recadero (borde izquierdo del sprite)
+const MESA_P={x:190,y:188};    // mesa de pendientes
+const MESA_L={x:302,y:188};    // mesa de leídos
+const FOSO={x:84,y:228,w:38,h:18};
+const CASA_ACAP=404, CUEVA_X=436;
+const MAX_RECADEROS=6, COLA_MAX=20, SALIDA_S=0.8, LEE_S=1.8, PODA_MS=45*60*1000;
+
+// Un saco = un token. Los nombres, motivos y razones son texto NO fiable: solo van a fillText/textContent.
+const sacos=new Map();  // mint → saco, mientras sigue en el poblado
+const vDec=new Set(), vV1=new Set(), vV2=new Set(), vRes=new Set(); // mints ya vistos (no se animan dos veces)
+const fin=new Set();    // mints que ya salieron del poblado (foso o cueva)
+let recaderos=[], vuelos=[], pendientes=[], leidos=[], flotantes=[], colaDec=[], colaAcap=[], demoTimers=[];
+const ch={1:{tok:null,t:0},2:{tok:null,t:0}}; // chamán rojo (v1) y azul (v2)
+const acap={x:CASA_ACAP,fase:'casa',t:0,token:null,dir:1};
+let proxLanz=0, demoSig=1, demoProx=0.5;
+
+const limpio=s=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g,' ').trim();
+const corto=s=>Array.from(s).slice(0,12).join('');
+const nota=v=>v==null?'?':v+'/10';
+
+function crearSaco(mint,nombre,pasa,motivos,donde,visto){
+  mint=String(mint);
+  const t={mint,nombre:limpio(nombre).slice(0,60)||mint.slice(0,6),pasa,motivos:limpio(motivos),
+    l1:false,v1:null,r1:'',e1:'',d1:false, l2:false,v2:null,r2:'',e2:'',d2:false, // l = llegó el análisis, d = ya lo leyó el chamán
+    grad:false,errRes:'',enCola:false,donde,visto:visto||Date.now()};
+  sacos.set(mint,t);return t;
+}
+// leídos solo si lo han leído v1 Y v2; si no, a pendientes
+function aMesa(t){if(t.d1&&t.d2){t.donde='leido';leidos.push(t);}else{t.donde='pendiente';pendientes.push(t);}}
+function sacarDeMesa(t){let i=pendientes.indexOf(t);if(i>=0)pendientes.splice(i,1);i=leidos.indexOf(t);if(i>=0)leidos.splice(i,1);}
+
+// ---------- entrada de datos (la misma para datos reales y demo) ----------
+function decision(d,historia,conRes,ahoraSrv){
+  if(vDec.has(d.mint))return;vDec.add(d.mint);
+  const pasa=d.pasa===1||d.pasa===true;
+  if(historia){ // sin animar: se coloca luego según los análisis que tenga
+    if(pasa&&!conRes.has(d.mint))crearSaco(d.mint,d.nombre,true,d.motivos,'',Date.now()-(ahoraSrv-d.ts)*1000);
+    return;
+  }
+  cuenta.vistos++;
+  if(!pasa&&colaDec.length>=COLA_MAX){cuenta.foso++;return;} // cola llena: el descartado va directo al foso
+  colaDec.push(crearSaco(d.mint,d.nombre,pasa,d.motivos,'cola'));
+}
+function analisis(n,a,historia){
+  const vis=n===1?vV1:vV2;
+  if(vis.has(a.mint)||fin.has(a.mint))return;vis.add(a.mint);
+  let t=sacos.get(a.mint),nuevo=false;
+  if(!t){if(historia)return;t=crearSaco(a.mint,a.nombre,true,'','');nuevo=true;} // la página se abrió después: el saco aparece en la mesa
+  t['l'+n]=true;t['v'+n]=a.puntuacion;t['r'+n]=limpio(a.razon).slice(0,160);t['e'+n]=limpio(a.etiqueta).slice(0,20);
+  if(historia)t['d'+n]=true;
+  if(nuevo)aMesa(t);
+}
+function resumen(r,historia){
+  if(vRes.has(r.mint))return;vRes.add(r.mint);
+  if(historia){fin.add(r.mint);return;}
+  if(r.pasa!==1){cuenta.arch++;return;} // descartados: solo cuentan
+  if(fin.has(r.mint))return;
+  let t=sacos.get(r.mint);
+  if(!t){t=crearSaco(r.mint,r.nombre,true,'','leido');t.d1=t.d2=true;leidos.push(t);}
+  t.grad=r.graduado===1;t.errRes=limpio(r.error);t.enCola=true;
+  colaAcap.push(t);
+}
+function podar(){ // quita de las mesas lo que lleva más de 45 min (salvo lo que espera al acaparador)
+  const lim=Date.now()-PODA_MS;
+  for(const [m,t] of sacos)if((t.donde==='pendiente'||t.donde==='leido')&&!t.enCola&&t.visto<lim){sacarDeMesa(t);sacos.delete(m);}
+}
+function procesar(d){
+  for(const a of d.agentes){
+    const g=agentes[a.agente];if(!g)continue;
+    g.estado=a.estado;g.latido=a.edad_s===null?undefined:a.edad_s;g.proc=a.procesados;g.err=a.errores;
+  }
+  alarmaSrv=!!d.alarma;
+  const historia=!base, conRes=new Set(d.resumen.map(r=>r.mint));
+  for(const x of d.decisiones.slice().reverse())decision(x,historia,conRes,d.ahora); // de más vieja a más nueva
+  for(const x of d.analisis_v1.slice().reverse())analisis(1,x,historia);
+  for(const x of d.analisis_v2.slice().reverse())analisis(2,x,historia);
+  for(const x of d.resumen.slice().reverse())resumen(x,historia);
+  if(historia){for(const t of sacos.values())if(t.donde==='')aMesa(t);base=true;}
+  podar();
+}
+
+// ---------- red ----------
+const aviso=document.getElementById('aviso');
+async function sondear(){
+  if(modo!=='real')return;
+  const g=gen;let d;
+  try{
+    const r=await fetch('/datos_poblado',{cache:'no-store'});
+    if(!r.ok)throw new Error(r.status);
+    d=await r.json();
+  }catch(e){if(g===gen){aviso.textContent='Sin conexión con el panel: la escena sigue, pero sin datos nuevos.';aviso.hidden=false;}return;}
+  if(g!==gen)return; // se cambió de modo mientras llegaba
+  aviso.hidden=true;
+  procesar(d);
+}
+
+// ---------- modo demo: eventos falsos por el mismo camino que los reales ----------
+function demoEmitir(){
+  const mint='demo'+(demoSig++),pasa=Math.random()<0.32;
+  const azar=(a,b)=>a+Math.random()*(b-a), pide=(s,f)=>demoTimers.push({t:s,f});
+  decision({mint,nombre:NOMBRES[Math.floor(Math.random()*NOMBRES.length)],pasa:pasa?1:0,
+    motivos:pasa?'':MOTIVOS[Math.floor(Math.random()*MOTIVOS.length)],ts:0},false,null,0);
+  if(pasa){
+    pide(azar(3,6),()=>analisis(1,{mint,nombre:'',puntuacion:4+Math.floor(Math.random()*4),etiqueta:'meme',razon:'razón de ejemplo'},false));
+    pide(azar(4,8),()=>analisis(2,{mint,nombre:'',puntuacion:3+Math.floor(Math.random()*6),etiqueta:'otro',razon:'razón de ejemplo'},false));
+  }
+  pide(azar(16,22),()=>resumen({mint,nombre:'',graduado:pasa&&Math.random()<0.15?1:0,error:null,pasa:pasa?1:0},false));
+}
+
+function reiniciar(){
+  recaderos=[];vuelos=[];pendientes=[];leidos=[];flotantes=[];colaDec=[];colaAcap=[];demoTimers=[];
+  sacos.clear();for(const s of [vDec,vV1,vV2,vRes,fin])s.clear();
+  ch[1].tok=ch[2].tok=null;ch[1].t=ch[2].t=0;
+  acap.x=CASA_ACAP;acap.fase='casa';acap.token=null;acap.dir=1;acap.t=0;
+  for(const k in cuenta)cuenta[k]=0;
+  base=false;proxLanz=0;gen++;aviso.hidden=true;
+}
+function ponerModo(m){
+  modo=m;reiniciar();
+  const demo=m==='demo';
+  document.getElementById('esc').hidden=!demo;
+  document.getElementById('b-demo').setAttribute('aria-pressed',String(demo));
+  for(const k of VIGILADOS){const a=agentes[k];a.proc=a.err=undefined;a.estado='sin_datos';a.latido=undefined;}
+  alarmaSrv=false;
+  if(demo){agentes.rastreador.latido=12;agentes.analista.latido=31;agentes.analista_v2.latido=47;agentes.archivista.latido=5;aplicarEscenario('ok');}
+  else{pintarAgentes();sondear();}
+}
+
+function flotar(s,x,y,c){flotantes.push({s,x,y,c,t:0});}
+
+// primer saco de la cola del acaparador que está en una mesa (los que aún tiene un chamán o un recadero esperan)
+function sigAcap(){
+  colaAcap=colaAcap.filter(t=>sacos.get(t.mint)===t);
+  return colaAcap.find(t=>t.donde==='pendiente'||t.donde==='leido');
+}
+
+function actualizar(dt){
+  for(const k of VIGILADOS){const a=agentes[k];if(a.latido!==undefined)a.latido+=dt;if(modo==='demo'&&a.estado==='ok'&&a.latido>60)a.latido-=60;}
+
+  if(modo==='demo'){
+    demoProx-=dt;
+    if(demoProx<=0&&agentes.rastreador.estado==='ok'){demoProx=1.8+Math.random()*1.6;demoEmitir();}
+    for(const e of demoTimers)e.t-=dt;
+    const listos=demoTimers.filter(e=>e.t<=0);demoTimers=demoTimers.filter(e=>e.t>0);
+    for(const e of listos)e.f();
+  }
+
+  // sale un recadero cada SALIDA_S como mucho, y nunca más de MAX_RECADEROS en el camino
+  proxLanz-=dt;
+  if(proxLanz<=0&&colaDec.length&&recaderos.length<MAX_RECADEROS){
+    const t=colaDec.shift();t.donde='recadero';
+    recaderos.push({x:-14,dir:1,fase:'ida',t:0,token:t});proxLanz=SALIDA_S;
+  }
+
+  for(const r of recaderos){
+    r.t+=dt;
+    if(r.fase==='ida'){r.x+=26*dt;if(r.x>=PUERTA){r.x=PUERTA;r.fase='puerta';r.t=0;}}
+    else if(r.fase==='puerta'){
+      if(r.t>1.0){
+        if(r.token.pasa){r.fase='ida2';cuenta.pasan++;}
+        else{vuelos.push({token:r.token,x0:r.x+6,y0:SUELO-20,t:0});r.token.donde='vuelo';sacos.delete(r.token.mint);fin.add(r.token.mint);r.token=null;r.fase='vuelta';r.dir=-1;}
+      }
+    }
+    else if(r.fase==='ida2'){r.x+=26*dt;if(r.x>=MESA_P.x-10){r.fase='vuelta';r.dir=-1;aMesa(r.token);r.token=null;}}
+    else if(r.fase==='vuelta'){r.x-=30*dt;if(r.x<-16)r.borrar=true;}
+  }
+  recaderos=recaderos.filter(r=>!r.borrar);
+
+  // sacos lanzados al foso
+  for(const v of vuelos){v.t+=dt/0.7;if(v.t>=1){v.borrar=true;cuenta.foso++;}}
+  vuelos=vuelos.filter(v=>!v.borrar);
+
+  // chamanes: cada uno coge de pendientes un saco cuyo análisis ya llegó, lo lee LEE_S y lo devuelve (o a leídos si ya lo leyeron los dos)
+  for(const n of [1,2]){
+    const c=ch[n],ok=n===1?rojoOk():azulOk();
+    if(!ok){if(c.tok){const t=c.tok;c.tok=null;aMesa(t);}continue;} // dormido: suelta el saco
+    if(!c.tok){
+      const t=pendientes.find(x=>x['l'+n]&&!x['d'+n]);
+      if(t){pendientes.splice(pendientes.indexOf(t),1);c.tok=t;c.t=0;t.donde='v'+n;}
+    } else {
+      c.t+=dt;
+      if(c.t>LEE_S){const t=c.tok;c.tok=null;t['d'+n]=true;aMesa(t);}
+    }
+  }
+
+  // acaparador: cuando llega el resumen de un token que pasa, coge el saco de la mesa donde esté
+  if(archOk()){
+    acap.t+=dt;
+    if(acap.fase==='casa'){acap.dir=-1;if(sigAcap())acap.fase='ida';}
+    else if(acap.fase==='ida'){acap.dir=-1;acap.x-=28*dt;if(acap.x<=MESA_L.x+18){acap.x=MESA_L.x+18;acap.fase='coge';acap.t=0;}}
+    else if(acap.fase==='coge'){
+      if(acap.t>0.5){
+        const t=sigAcap();
+        if(t){colaAcap.splice(colaAcap.indexOf(t),1);sacarDeMesa(t);t.donde='acap';acap.token=t;if(t.grad)flotar('¡ORO!',acap.x+12,150,'#ffd54a');}
+        acap.fase='vuelta';
+      }
+    }
+    else if(acap.fase==='vuelta'){acap.dir=1;acap.x+=28*dt;if(acap.x>=CUEVA_X-6){acap.fase='deja';acap.t=0;}}
+    else if(acap.fase==='deja'){
+      if(acap.t>0.5){
+        const t=acap.token;
+        if(t){cuenta.cueva++;if(t.grad)cuenta.oro++;t.donde='cueva';sacos.delete(t.mint);fin.add(t.mint);acap.token=null;}
+        acap.fase='regresa';
+      }
+    }
+    else if(acap.fase==='regresa'){acap.dir=-1;acap.x-=28*dt;if(acap.x<=CASA_ACAP){acap.x=CASA_ACAP;acap.fase='casa';}}
+  }
+
+  for(const f of flotantes){f.t+=dt;f.y-=10*dt;}
+  flotantes=flotantes.filter(f=>f.t<1.6);
+}
+
+// ---------- dibujo ----------
+let reloj=0;
+function tic(f){return reducido?0:Math.floor(reloj*f)%2;}
+const visibles=[]; // sacos dibujados este fotograma, para el ratón
+
+function dibujaSaco(tok,x,y){
+  const oro=tok.grad&&(tok.donde==='acap');
+  sprite(oro?MONEDA:SACO,x,y,oro?PAL_MON:PAL_SACO,false);
+  if(oro&&tic(4))px(x+5,y-1,1,1,'#fff6c0');
+  visibles.push({tok,x,y});
+}
+
+function fondo(){
+  const g=ctx.createLinearGradient(0,0,0,150);g.addColorStop(0,'#0a1320');g.addColorStop(1,'#1b2b28');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,150);
+  for(const [x,y,b] of estrellas){if(reducido||((reloj*0.7+b*10)%4)>0.4)px(x,y,1,1,b>0.8?'#fff6d0':'#8fa0a8');}
+  ctx.fillStyle='#e9e4c4';ctx.beginPath();ctx.arc(440,30,11,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#0d1824';ctx.beginPath();ctx.arc(445,26,10,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#16221a';ctx.beginPath();ctx.moveTo(0,150);
+  [[0,128],[50,116],[100,130],[160,110],[220,128],[280,114],[330,130],[380,118],[430,132],[480,124],[480,150]].forEach(([x,y])=>ctx.lineTo(x,y));
+  ctx.fill();
+  px(0,150,W,120,'#25321b');
+  for(const [x,y] of matas){px(x,y,1,2,'#3a4d27');px(x+1,y+1,1,1,'#3a4d27');}
+  px(0,198,W,17,'#4b3a27');px(0,198,W,1,'#5e4a31');px(0,214,W,1,'#3a2c1d');
+  for(let x=5;x<W;x+=19)px(x,204+(x%6),2,1,'#62503a');
+}
+function atalaya(){
+  const w='#5a3d22',w2='#6b4a2b';
+  px(26,96,3,102,w);px(52,96,3,102,w);
+  for(let i=0;i<23;i++){px(29+i,112+i,1,1,w);px(51-i,140+i,1,1,w);}
+  px(20,93,40,4,w2);px(20,84,2,9,w);px(58,84,2,9,w);px(20,84,40,2,w2);
+  px(64,72,2,24,w);
+  const enc=agentes.rastreador.estado==='ok';
+  if(enc){const f=tic(8);ctx.fillStyle='rgba(255,170,60,.14)';ctx.beginPath();ctx.arc(65,66,14,0,Math.PI*2);ctx.fill();
+    px(63,66-f,5,6,'#f08a24');px(64,64-f,3,3,'#ffd35a');}
+  else px(63,69,5,3,'#2a2a2a');
+  const bob=enc?tic(2):0;
+  sprite(GRANDE,28,66+bob,PAL,true);
+  px(16,75+bob,13,3,'#9a8f78');px(14,74+bob,2,5,'#b8ad92'); // catalejo hacia el camino
+  texto('ATALAYA',40,52,'#e8e3c6',8);texto('rastreador',40,60,'#9ba486',6,'center',400);
+  if(!enc)texto('sin fotos',40,45,'#ff6b55',7);
+}
+function empalizada(){
+  const s='#6b4a2b',p='#4a3220';
+  for(const x of [128,134,140]){px(x,156,4,42,s);px(x+1,152,2,4,s);px(x,156,1,42,p);px(x,216,4,32,s);px(x+1,212,2,4,s);px(x,216,1,32,p);}
+  // foso
+  px(FOSO.x,FOSO.y,FOSO.w,FOSO.h,'#080a06');px(FOSO.x-1,FOSO.y-1,FOSO.w+2,1,'#3a2e1e');px(FOSO.x-1,FOSO.y+FOSO.h,FOSO.w+2,1,'#3a2e1e');
+  for(const x of [90,98,106,114])px(x,FOSO.y+7,1,8,'#5a3d22');
+  texto('FOSO · '+cuenta.foso,FOSO.x+FOSO.w/2,FOSO.y+FOSO.h+10,'#c9a07a',6);
+  // portero con lanza, mirando al camino
+  const x=146,y=172;
+  px(146,146,2,52,'#8a6e48');px(145,141,4,5,'#b9b9a8');px(146,139,2,2,'#e2e2d2');
+  sprite(GRANDE,x,y,PAL,true);
+  px(x+8,y+3,9,2,'#7a5a34');
+  texto('EMPALIZADA',140,130,'#e8e3c6',8);texto('riesgo',140,138,'#9ba486',6,'center',400);
+}
+function mesa(m,lista,titulo){
+  px(m.x,m.y,24,3,'#6b4a2b');px(m.x+2,m.y+3,2,8,'#5a3d22');px(m.x+20,m.y+3,2,8,'#5a3d22');
+  lista.slice(0,9).forEach((t,i)=>{dibujaSaco(t,m.x+1+(i%3)*8,m.y-7-Math.floor(i/3)*6);});
+  texto(titulo+' · '+lista.length,m.x+12,m.y+20,'#c9b98a',6);
+}
+function bocadillo(x,y,s,c){
+  ctx.font='600 7px "Pixelify Sans", monospace';const w=Math.ceil(ctx.measureText(s).width)+8;
+  px(x-w/2,y-9,w,11,'#efe6c4');px(x-1,y+2,3,2,'#efe6c4');
+  ctx.fillStyle=c;ctx.textAlign='center';ctx.fillText(s,x,y);
+}
+function caldero(){
+  const rojo=rojoOk(),azul=azulOk(),awake=rojo||azul;
+  if(awake){const f=tic(9);px(250,195,20,3,'#7a2e14');px(253,191-f,5,4,'#f08a24');px(261,191+f-1,5,4,'#f08a24');px(257,190,4,3,'#ffd35a');}
+  else px(250,195,20,3,'#2b2b2b');
+  px(245,174,30,3,'#3c3c3c');px(247,177,26,16,'#1c1c1c');px(249,193,22,2,'#141414');px(247,180,2,9,'#2c2c2c');
+  px(248,174,24,1,awake?'#79d14a':'#3d5a2a');
+  if(awake&&!reducido){for(let i=0;i<5;i++){const y=171-((reloj*12+i*7)%20);px(251+i*4+(i%2),y,1,1,'#9be06a');}}
+  mesa(MESA_P,pendientes,'pendientes');
+  mesa(MESA_L,leidos,'leídos');
+  // chamán rojo (v1) y azul (v2)
+  const b1=rojo?tic(3):0, b2=azul?1-tic(3):0;
+  sprite(rojo?GRANDE:GRANDE_DUERME,220,170+b1,PAL,false);
+  px(229,176+b1,8,1,'#efe6c4');px(232,163+b1,2,7,'#c0392b');px(234,161+b1,1,4,'#e0574a');
+  sprite(azul?GRANDE:GRANDE_DUERME,274,170+b2,PAL,true);
+  px(282,176+b2,8,1,'#efe6c4');px(285,163+b2,2,7,'#3a7bd5');px(284,161+b2,1,4,'#6aa0ea');
+  if(rojo&&ch[1].tok){const t=ch[1].tok;dibujaSaco(t,240,166);bocadillo(232,150,'v1 · '+nota(t.v1),t.v1>=7?'#2f7a14':'#5a5a4a');}
+  if(azul&&ch[2].tok){const t=ch[2].tok;dibujaSaco(t,274,166);bocadillo(287,150,'v2 · '+nota(t.v2),t.v2>=7?'#2f7a14':'#5a5a4a');}
+  if(!rojo||!azul){
+    const z=Math.floor(reloj*2)%3;
+    if(!rojo)zeta(236,160-z,'#cfd8dc');
+    if(!azul)zeta(290,159-(z+1)%3,'#cfd8dc');
+    texto(!rojo&&!azul?'chamanes dormidos':!rojo?'chamán rojo dormido':'chamán azul dormido',260,140,'#ffb04a',7);
+  }
+  texto('CALDERO',260,124,'#e8e3c6',8);texto('analistas v1 · v2',260,132,'#9ba486',6,'center',400);
+}
+function vigilante(){
+  px(340,140,36,9,'#4a4e45');px(344,136,28,4,'#5a5e55');px(340,140,36,1,'#61655b');
+  const x=346,y=110,al=alarma();
+  sprite(GRANDE,x,y+(al?tic(6):0),PAL,false);
+  px(x+19,y+17,7,3,'#d9c48a');px(x+26,y+15,3,7,'#e8d8a2');
+  texto('CUERNO',358,96,'#e8e3c6',8);texto('vigilante',358,104,'#9ba486',6,'center',400);
+  if(al){
+    const r=reducido?0:(reloj*16)%14;
+    ctx.strokeStyle='rgba(212,80,63,.9)';ctx.lineWidth=1;
+    for(const k of [0,7]){const rr=4+((r+k)%14);ctx.beginPath();ctx.arc(x+30,y+18,rr,-0.7,0.7);ctx.stroke();}
+    texto('¡ALARMA!',358,78,'#ff5a45',8);
+    const QUE={rastreador:'atalaya sin fotos',analista:'chamanes dormidos',archivista:'acaparador parado'};
+    const qui=[...new Set(VIGILADOS.filter(k=>agentes[k].estado!=='ok').map(k=>QUE[k]||QUE.analista))].join(' · ');
+    texto(qui,358,87,'#ff8a75',6,'center',400);
+  } else texto('todo en calma',358,160,'#8db43c',6,'center',400);
+}
+function cueva(){
+  ctx.fillStyle='#363a32';ctx.beginPath();
+  [[384,200],[392,170],[408,150],[432,140],[460,142],[480,152],[480,200]].forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.fill();
+  ctx.fillStyle='#0a0b08';ctx.beginPath();ctx.ellipse(446,200,18,26,0,Math.PI,0);ctx.fill();px(428,198,36,3,'#0a0b08');
+  const n=Math.min(cuenta.cueva,48);
+  for(let i=0;i<n;i++){const cx=434+(i*7)%24,cy=197-Math.floor(i/10)*2;px(cx,cy,3,2,i%5===0?'#e8c13a':'#d9cfa8');}
+  for(let i=0;i<Math.min(cuenta.oro,10);i++){px(437+i*2,190-(i%2),2,2,tic(3)&&i%2?'#fff6c0':'#e8c13a');}
+  texto('CUEVA',446,128,'#e8e3c6',8);texto('archivista',446,136,'#9ba486',6,'center',400);
+  texto('tesoro · '+cuenta.cueva,446,226,'#d4a92a',6);
+  if(archOk()){
+    const andando=['ida','vuelta','regresa'].includes(acap.fase);
+    const rows=andando&&tic(5)?PASO_A:GRANDE;
+    sprite(rows,acap.x,SUELO-27,PAL,acap.dir<0);
+    if(acap.token)dibujaSaco(acap.token,acap.x+9,SUELO-34);
+  } else {
+    texto('archivista parado',446,118,'#ff6b55',7);
+  }
+}
+function dibujaRecaderos(){
+  for(const r of recaderos){
+    const andando=r.fase!=='puerta';
+    sprite(andando&&tic(6)?CHICO_B:CHICO,r.x,SUELO-14,PAL,r.dir<0);
+    if(r.token){
+      dibujaSaco(r.token,r.x+3,SUELO-21);
+      texto(corto(r.token.nombre),r.x+6,SUELO-25,'#e8e3c6',6,'center',400);
+      if(r.fase==='puerta'&&r.t>0.35){
+        if(r.token.pasa)texto('PASA',r.x+6,SUELO-34,'#8fe05a',8);
+        else texto('¡AL FOSO!',r.x+6,SUELO-34,'#ff5a45',8);
+      }
+    }
+  }
+  for(const v of vuelos){
+    const p=Math.min(v.t,1);
+    const tx=FOSO.x+FOSO.w/2-3, ty=FOSO.y+4;
+    const x=v.x0+(tx-v.x0)*p, y=v.y0+(ty-v.y0)*p-Math.sin(p*Math.PI)*22;
+    ctx.globalAlpha=p>0.85?(1-p)/0.15:1;dibujaSaco(v.token,x,y);ctx.globalAlpha=1;
+  }
+}
+function velo(){
+  if(!alarma())return;
+  ctx.fillStyle='rgba(212,60,40,'+(reducido?0.08:0.05+0.05*Math.abs(Math.sin(reloj*3)))+')';ctx.fillRect(0,0,W,H);
+}
+function pintar(){
+  visibles.length=0;
+  fondo();atalaya();empalizada();caldero();vigilante();cueva();dibujaRecaderos();
+  for(const f of flotantes){ctx.globalAlpha=Math.max(0,1-f.t/1.6);texto(f.s,f.x,f.y,f.c,9);ctx.globalAlpha=1;}
+  velo();
+}
+
+// ---------- panel lateral ----------
+const ul=document.getElementById('agentes');
+function pill(a,k){
+  if(k==='riesgo')return ['reglas','neutro'];
+  if(k==='vigilante')return alarma()?['¡alarma!','mal']:['en calma','ok'];
+  if(a.estado==='ok')return ['ok','ok'];
+  if(['parado','error','sin_latido'].includes(a.estado))return [a.estado,'mal'];
+  return [a.estado,'aviso'];
+}
+function pintarAgentes(){
+  ul.textContent='';
+  for(const k of Object.keys(agentes)){
+    const a=agentes[k];const li=document.createElement('li');
+    const p=document.createElement('span');p.className='pers';p.textContent=a.pers;
+    const t=document.createElement('span');t.className='tec';
+    let lat='';if(a.latido!==undefined)lat=a.estado==='parado'?' · sin latido '+Math.floor(a.latido)+' s':' · latido hace '+Math.floor(a.latido)+' s';
+    if(a.proc!=null)lat+=' · '+a.proc+' proc.'+(a.err?' · '+a.err+' err.':'');
+    t.textContent=a.tec+lat;
+    const [txt,cls]=pill(a,k);const s=document.createElement('span');s.className='pill '+cls;s.textContent=txt;
+    li.append(p,s,t);ul.appendChild(li);
+  }
+}
+const ids={vistos:'c-vistos',foso:'c-foso',pasan:'c-pasan',cueva:'c-cueva',oro:'c-oro',arch:'c-arch'};
+function pintarCuentas(){
+  for(const k in ids)document.getElementById(ids[k]).textContent=cuenta[k];
+  document.getElementById('c-espera').textContent=pendientes.length+leidos.length+(ch[1].tok?1:0)+(ch[2].tok?1:0);
+  document.getElementById('c-cola').textContent=colaDec.length;
+}
+
+// ---------- ratón ----------
+const tip=document.getElementById('tip');
+const zonas=[
+  {k:'rastreador',x:12,y:62,w:46,h:32},{k:'riesgo',x:142,y:138,w:28,h:60},
+  {k:'analista',x:218,y:158,w:26,h:40},{k:'analista_v2',x:272,y:158,w:26,h:40},
+  {k:'vigilante',x:344,y:106,w:32,h:32}];
+const DONDE={cola:'esperando turno para salir',recadero:'en manos del recadero',vuelo:'volando al foso',pendiente:'en la mesa de pendientes',v1:'leyéndolo el chamán rojo (v1)',
+  v2:'leyéndolo el chamán azul (v2)',leido:'en la mesa de leídos, esperando su resumen',acap:'camino de la cueva'};
+function mostrarTip(lineas,titulo,ex,ey){
+  const rect=cv.parentElement.getBoundingClientRect();
+  tip.textContent='';const b=document.createElement('b');b.textContent=titulo;tip.appendChild(b);
+  for(const l of lineas){const d=document.createElement('div');d.textContent=l;tip.appendChild(d);}
+  tip.hidden=false;
+  const mx=ex-rect.left,my=ey-rect.top,tw=tip.offsetWidth,th=tip.offsetHeight;
+  tip.style.left=Math.max(4,Math.min(mx+12,rect.width-tw-4))+'px';
+  tip.style.top=Math.max(4,Math.min(my+12,rect.height-th-4))+'px';
+}
+function alPuntero(e){
+  const r=cv.getBoundingClientRect();
+  const lx=(e.clientX-r.left)*W/r.width, ly=(e.clientY-r.top)*H/r.height;
+  for(let i=visibles.length-1;i>=0;i--){
+    const v=visibles[i];
+    if(lx>=v.x-2&&lx<=v.x+8&&ly>=v.y-2&&ly<=v.y+9){
+      const t=v.tok,l=['Decisión: '+(t.pasa?'pasa':'descartado')];
+      if(t.motivos)l.push('Razones: '+t.motivos);
+      for(const n of [1,2])if(t['l'+n])l.push('Qwen v'+n+': '+nota(t['v'+n])+(t['e'+n]?' ('+t['e'+n]+')':'')+(t['r'+n]?' · '+t['r'+n]:''));
+      if(t.errRes)l.push('Resumen con error: '+t.errRes);
+      if(t.grad&&t.donde==='acap')l.push('¡Graduado! (moneda de oro)');
+      l.push('Ahora: '+(DONDE[t.donde]||t.donde));
+      mostrarTip(l,t.nombre,e.clientX,e.clientY);return;
+    }
+  }
+  const zs=zonas.slice();
+  if(archOk())zs.push({k:'archivista',x:acap.x,y:SUELO-28,w:24,h:28});
+  for(const z of zs){
+    if(lx>=z.x&&lx<=z.x+z.w&&ly>=z.y&&ly<=z.y+z.h){
+      const a=agentes[z.k];mostrarTip([a.tec,'Estado: '+pill(a,z.k)[0]],a.pers,e.clientX,e.clientY);return;
+    }
+  }
+  tip.hidden=true;
+}
+cv.addEventListener('pointermove',alPuntero);
+cv.addEventListener('pointerdown',alPuntero);
+cv.addEventListener('pointerleave',()=>{tip.hidden=true;});
+document.querySelectorAll('[data-esc]').forEach(b=>b.addEventListener('click',()=>aplicarEscenario(b.dataset.esc)));
+document.getElementById('b-demo').addEventListener('click',()=>ponerModo(modo==='demo'?'real':'demo'));
+
+// arranque: modo real, datos cada 5 s
+ponerModo('real');
+setInterval(sondear,5000);
+
+let antes=performance.now(),acum=0;
+function bucle(ahora){
+  const dt=Math.min((ahora-antes)/1000,0.1);antes=ahora;reloj+=dt;
+  actualizar(dt);pintar();
+  acum+=dt;if(acum>0.5){acum=0;pintarAgentes();pintarCuentas();}
+  requestAnimationFrame(bucle);
+}
+pintarAgentes();pintarCuentas();pintar();
+requestAnimationFrame(bucle);
+})();
+</script>

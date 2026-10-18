@@ -1,0 +1,22 @@
+# Secretos: NUNCA a GitHub
+.env
+.env.*
+!.env.example
+*.key
+id.json
+*keypair*.json
+*wallet*.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Datos y registros generados por los agentes
+data/
+logs/
+*.csv
+*.log
+
+# Sistema
+Thumbs.db
